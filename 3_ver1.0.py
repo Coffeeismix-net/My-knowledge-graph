@@ -8,6 +8,8 @@ import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
 
+st.sidebar.error(f"현재 설치된 google-generativeai 버전: {genai.__version__}")
+
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
 # ==========================================
@@ -340,3 +342,4 @@ else:
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
             st.info("Connected to Google Sheets & Gemini")
+
