@@ -18,24 +18,20 @@ SCOPES = [
 
 def get_db_connection():
     try:
-        # 1. secrets 확인
         if "gcp_service_account" not in st.secrets:
             st.error("❌ Secrets 설정 오류: 'gcp_service_account' 섹션이 없습니다.")
             return None
 
-        # 2. 인증
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        # 3. [변경] 이름 대신 ID로 직접 열기 (훨씬 안정적!)
-        # 아래 따옴표 안에 아까 복사한 긴 ID를 넣어주세요.
-        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"  # <--- 여기에 ID 붙여넣기
+        # [ID로 직접 연결] 본인의 시트 ID 확인 필요
+        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
         
         return client.open_by_key(sheet_id).sheet1
         
     except Exception as e:
-        # 에러 발생 시 상세 내용 출력
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
 
@@ -74,21 +70,17 @@ def load_nodes():
 
 def add_node(label, group, summary, keywords):
     try:
-        # 1. DB 연결 시도
         sheet = get_db_connection()
         if not sheet:
-            st.error("❌ Google Sheets 연결 실패: secrets 설정이나 인터넷 연결을 확인하세요.")
+            st.error("❌ Google Sheets 연결 실패")
             return None
 
-        # 2. 데이터 준비 및 저장
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
         
-        # 구글 시트에 행 추가
         sheet.append_row([new_id, label, group, summary, kw_str])
         
-        # 3. 성공 시 딕셔너리 반환
         return {
             "id": new_id, 
             "label": label, 
@@ -96,9 +88,7 @@ def add_node(label, group, summary, keywords):
             "summary": summary, 
             "keywords": keywords
         }
-        
     except Exception as e:
-        # 에러가 나면 화면에 범인을 출력해 줍니다!
         st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
         return None
 
@@ -126,17 +116,16 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE (Quota Handling Fixed)
+# 3. AI ENGINE
 # ==========================================
 def ai_process(text):
-    # Secrets 확인
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
 
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # [FIX] Quota 에러 방지를 위해 가장 가벼운 Flash 모델만 사용
+    # [모델 버전] 현재 사용 가능한 모델로 설정
     model_name = 'gemini-2.0-flash'
     
     try:
@@ -154,7 +143,6 @@ def ai_process(text):
     
     except Exception as e:
         err_msg = str(e)
-        # [FIX] 429 Quota 에러 발생 시 사용자에게 친절한 메시지 출력
         if "429" in err_msg or "Quota" in err_msg:
             return {"success": False, "error": "⚠️ 구글 AI 사용량 초과 (1~2분 뒤 다시 시도해주세요)."}
         return {"success": False, "error": f"AI Error: {err_msg}"}
@@ -166,10 +154,18 @@ st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon=
 
 st.markdown("""
 <style>
+    /* 전체 배경 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
-    iframe { filter: invert(1) hue-rotate(180deg) !important; border: 1px solid #333 !important; border-radius: 12px; background-color: white !important; }
+    
+    /* [수정] iframe 필터 반전 제거 및 배경색 지정 */
+    iframe { 
+        border: 1px solid #333 !important; 
+        border-radius: 12px; 
+        background-color: #000000 !important; 
+    }
+    
     .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
 
     div[data-testid="column"] button { 
@@ -251,7 +247,6 @@ else:
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
     with left:
-        # Search (Fixed Multiselect)
         all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
         default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
@@ -271,7 +266,6 @@ else:
         if c2.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
         st.markdown("<hr style='margin:5px 0; border-color:#333;'>", unsafe_allow_html=True)
         
-        # [LIST HEADER with Alignment Fix]
         h_cols = st.columns([0.8, 3, 1.2])
         h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
         h_cols[1].markdown("<div class='list-header-row col-left'>Keyword</div>", unsafe_allow_html=True)
@@ -284,7 +278,6 @@ else:
                     act = "#00ADB5" if kw == st.session_state['selected_keyword'] else "#fff"
                     rc = st.columns([0.8, 3, 1.2])
                     rc[0].markdown(f"<div class='list-content-row col-center' style='color:{act}'>{i}</div>", unsafe_allow_html=True)
-                    # Button padding matched via CSS (.col-left padding-left:12px)
                     if rc[1].button(kw, key=f"kbtn_{i}", use_container_width=True): st.session_state['selected_keyword'] = None if st.session_state['selected_keyword'] == kw else kw; st.rerun()
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
@@ -321,7 +314,16 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            cfg = Config(width="100%", height=600, directed=False, physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, node={'labelProperty':'label', 'renderLabel':True})
+            # [수정] Config에 backgroundColor 추가 (이게 핵심!)
+            cfg = Config(
+                width="100%", 
+                height=600, 
+                directed=False, 
+                physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
+                node={'labelProperty':'label', 'renderLabel':True},
+                backgroundColor="#000000"
+            )
+            
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
             if sel and sel != st.session_state['last_selection']: st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
 
@@ -331,7 +333,6 @@ else:
                 wc1.markdown("#### 📑 Active Nodes (Edit Mode)")
                 if wc2.button("🧹 Clear All", use_container_width=True): clear_ws(); st.rerun()
                 
-                # [FIX Nesting Error] 카드 내부 분할 제거 및 수직 배치
                 w_cols = st.columns(3) 
                 for idx, n in enumerate(wsn):
                     with w_cols[idx % 3]:
@@ -340,7 +341,6 @@ else:
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
                             
-                            # [FIX] 단순 수직 배치
                             if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
                             if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
                             if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
@@ -374,19 +374,14 @@ else:
                 n_sum = st.text_area("Summary", value=tmp['summary'])
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
                 
-                # [수정된 저장 로직]
                 if st.button("💾 Save", type="primary", use_container_width=True):
-                    # 1. 키워드 리스트로 변환
                     final_keywords = [k.strip() for k in n_kw.split(',')]
-                    # 2. 그룹 이름 정하기 (첫 번째 키워드)
                     group_name = final_keywords[0] if final_keywords else "General"
                     
-                    # 3. 노드 추가 함수 호출 (반환값 받기)
                     new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
                     
-                    # 4. 세션 상태(화면)에 즉시 반영
                     if new_node_data:
-                        st.session_state['nodes_db'].append(new_node_data) # 화면 리스트에 추가
+                        st.session_state['nodes_db'].append(new_node_data)
                         st.session_state['temp_analysis'] = None
                         st.success("Saved!")
                         time.sleep(1)
@@ -398,12 +393,3 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
-
-
-
-
-
-
-
-
-
