@@ -108,7 +108,7 @@ def ai_process(text):
     genai.configure(api_key=api_key)
     
     # [FIX] Quota 에러 방지를 위해 가장 가벼운 Flash 모델만 사용
-    model_name = 'gemini-1.5-flash'
+    model_name = 'gemini-1.5-flash-001'
     
     try:
         model = genai.GenerativeModel(model_name)
@@ -342,4 +342,5 @@ else:
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
             st.info("Connected to Google Sheets & Gemini")
+
 
