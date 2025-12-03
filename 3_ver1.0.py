@@ -8,26 +8,6 @@ import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.sidebar.error(f"현재 설치된 google-generativeai 버전: {genai.__version__}")
-
-# [디버깅용] 내 API Key로 사용 가능한 모델 리스트 확인
-try:
-    # 1. API 키 설정 (secrets에서 가져오기)
-    debug_key = st.secrets["gemini"]["api_key"]
-    genai.configure(api_key=debug_key)
-    
-    # 2. 모델 리스트 가져오기
-    model_list = []
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            model_list.append(m.name)
-            
-    # 3. 사이드바에 출력
-    st.sidebar.info(f"사용 가능 모델: {model_list}")
-
-except Exception as e:
-    st.sidebar.error(f"API 키 확인 실패: {e}")
-
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
 # ==========================================
@@ -126,7 +106,7 @@ def ai_process(text):
     genai.configure(api_key=api_key)
     
     # [FIX] Quota 에러 방지를 위해 가장 가벼운 Flash 모델만 사용
-    model_name = 'gemini-1.5-flash-001'
+    model_name = 'gemini-2.0-flash'
     
     try:
         model = genai.GenerativeModel(model_name)
@@ -152,42 +132,7 @@ def ai_process(text):
 # 4. UI STYLE & LAYOUT
 # ==========================================
 st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon="🧠")
-# ==========================================
-# [긴급 디버깅] 모델 리스트 화면 출력
-# ==========================================
-st.divider()
-st.subheader("🛠️ 긴급 점검: 모델 리스트 확인")
 
-# 1. 라이브러리 버전 재확인
-st.write(f"**현재 라이브러리 버전:** `{genai.__version__}`")
-
-# 2. 내 API 키로 쓸 수 있는 모델 목록 조회
-try:
-    # secrets에서 키 가져오기 (기존 로직 활용)
-    if "gemini" in st.secrets and "api_key" in st.secrets["gemini"]:
-        my_key = st.secrets["gemini"]["api_key"]
-        genai.configure(api_key=my_key)
-        
-        # 모델 목록 조회
-        my_models = []
-        for m in genai.list_models():
-            # 'generateContent'를 지원하는 모델만 필터링
-            if 'generateContent' in m.supported_generation_methods:
-                my_models.append(m.name)
-        
-        if my_models:
-            st.success("✅ 조회 성공! 아래 모델 이름 중 하나를 복사해서 쓰세요:")
-            st.code(my_models) # 여기에 뜨는 목록을 확인하세요!
-        else:
-            st.warning("⚠️ 조회는 됐는데, 사용 가능한 모델이 하나도 없다고 나옵니다.")
-    else:
-        st.error("❌ Secrets에 API Key가 설정되지 않았습니다.")
-
-except Exception as e:
-    st.error(f"❌ 조회 중 에러 발생: {e}")
-
-st.divider()
-# ==========================================
 st.markdown("""
 <style>
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
@@ -395,6 +340,7 @@ else:
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
             st.info("Connected to Google Sheets & Gemini")
+
 
 
 
