@@ -10,6 +10,24 @@ from google.oauth2.service_account import Credentials
 
 st.sidebar.error(f"현재 설치된 google-generativeai 버전: {genai.__version__}")
 
+# [디버깅용] 내 API Key로 사용 가능한 모델 리스트 확인
+try:
+    # 1. API 키 설정 (secrets에서 가져오기)
+    debug_key = st.secrets["gemini"]["api_key"]
+    genai.configure(api_key=debug_key)
+    
+    # 2. 모델 리스트 가져오기
+    model_list = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            model_list.append(m.name)
+            
+    # 3. 사이드바에 출력
+    st.sidebar.info(f"사용 가능 모델: {model_list}")
+
+except Exception as e:
+    st.sidebar.error(f"API 키 확인 실패: {e}")
+
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
 # ==========================================
@@ -342,5 +360,6 @@ else:
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
             st.info("Connected to Google Sheets & Gemini")
+
 
 
