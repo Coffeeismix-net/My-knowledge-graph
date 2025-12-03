@@ -325,45 +325,56 @@ else:
         elif st.session_state['menu_mode'] == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
-                ti = st.text_input("Title"); co = st.text_area("Content", height=200)
+                ti = st.text_input("Title")
+                co = st.text_area("Content", height=200)
                 if st.button("🔍 AI Analyze", type="primary"):
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
-                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
+                            st.session_state['temp_analysis'] = { 
+                                "title": ti, 
+                                "content": co, 
+                                "summary": res.get('summary',''), 
+                                "keywords": res.get('keywords',''), 
+                                "success": res['success'], 
+                                "error": res.get('error','') 
+                            }
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.error(f"{tmp['error']}")
-                else: st.success("Analysis Complete!")
+                if not tmp['success']: 
+                    st.error(f"{tmp['error']}")
+                else: 
+                    st.success("Analysis Complete!")
+                
                 st.markdown(f"**Title:** {tmp['title']}")
                 n_sum = st.text_area("Summary", value=tmp['summary'])
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
                 
-                # [FIX Nesting Error] 수직 배치
-        if st.button("💾 Save", type="primary", use_container_width=True):
-                    # 1. 키워드 정리
+                # [수정된 저장 로직]
+                if st.button("💾 Save", type="primary", use_container_width=True):
+                    # 1. 키워드 리스트로 변환
                     final_keywords = [k.strip() for k in n_kw.split(',')]
+                    # 2. 그룹 이름 정하기 (첫 번째 키워드)
                     group_name = final_keywords[0] if final_keywords else "General"
-    
-                # 2. 노드 추가 함수 호출하고 결과 받기
-                new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
-    
-                # 3. 결과가 잘 왔으면 내 화면 리스트(session_state)에 즉시 추가!
-                if new_node_data:
-                    st.session_state['nodes_db'].append(new_node_data)
-                    st.session_state['temp_analysis'] = None
-                    st.success("Saved!")
-                    time.sleep(1)
-                    st.session_state['menu_mode'] = "Knowledge Graph"
-                    st.rerun()
-                else:
-                    st.error("저장 중 오류가 발생했습니다.")
-        if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
+                    
+                    # 3. 노드 추가 함수 호출 (반환값 받기)
+                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
+                    
+                    # 4. 세션 상태(화면)에 즉시 반영
+                    if new_node_data:
+                        st.session_state['nodes_db'].append(new_node_data) # 화면 리스트에 추가
+                        st.session_state['temp_analysis'] = None
+                        st.success("Saved!")
+                        time.sleep(1)
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다.")
 
-        elif st.session_state['menu_mode'] == "Settings":
-            st.header("Settings")
-            st.info("Connected to Google Sheets & Gemini")
+                if st.button("Cancel", use_container_width=True): 
+                    st.session_state['temp_analysis'] = None
+                    st.rerun()
 
 
 
