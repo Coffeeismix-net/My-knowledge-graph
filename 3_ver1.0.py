@@ -159,11 +159,12 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [수정] iframe 필터 반전 제거 및 배경색 지정 */
+    /* [수정] IFRAME 반전 마법 (PC/모바일 공통 해결책) */
     iframe { 
-        border: 1px solid #333 !important; 
+        background-color: #ffffff !important; /* 일단 흰색으로 강제 */
+        filter: invert(1) hue-rotate(180deg) !important; /* 색상 반전 + 색조 복구 */
+        border: 1px solid #ddd !important; /* 반전되면 어두운 회색이 됨 */
         border-radius: 12px; 
-        background-color: #000000 !important; 
     }
     
     .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
@@ -314,14 +315,14 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [수정] Config에 backgroundColor 추가 (이게 핵심!)
+            # [수정] 배경색 설정 제거 (기본값=흰색) -> CSS 반전으로 블랙 효과
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
-                node={'labelProperty':'label', 'renderLabel':True},
-                backgroundColor="#000000"
+                node={'labelProperty':'label', 'renderLabel':True}
+                # backgroundColor="#000000" <--- 삭제됨
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
