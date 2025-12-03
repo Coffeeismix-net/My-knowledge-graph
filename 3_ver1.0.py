@@ -61,15 +61,22 @@ def load_nodes():
     except: return []
 
 def add_node(label, group, summary, keywords):
-    sheet = get_db_connection()
-    if not sheet: return None # 실패시 None 반환
     try:
+        # 1. DB 연결 시도
+        sheet = get_db_connection()
+        if not sheet:
+            st.error("❌ Google Sheets 연결 실패: secrets 설정이나 인터넷 연결을 확인하세요.")
+            return None
+
+        # 2. 데이터 준비 및 저장
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
+        
+        # 구글 시트에 행 추가
         sheet.append_row([new_id, label, group, summary, kw_str])
         
-        # 성공하면 방금 만든 노드 데이터를 딕셔너리로 리턴!
+        # 3. 성공 시 딕셔너리 반환
         return {
             "id": new_id, 
             "label": label, 
@@ -77,7 +84,11 @@ def add_node(label, group, summary, keywords):
             "summary": summary, 
             "keywords": keywords
         }
-    except: return None
+        
+    except Exception as e:
+        # 에러가 나면 화면에 범인을 출력해 줍니다!
+        st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
+        return None
 
 def update_node(node_id, label, summary, keywords):
     sheet = get_db_connection()
@@ -375,6 +386,7 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
 
 
 
