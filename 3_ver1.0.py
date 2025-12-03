@@ -26,7 +26,7 @@ def get_db_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        # [ID로 직접 연결] 본인의 시트 ID 확인 필요
+        # [ID로 직접 연결]
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
         
         return client.open_by_key(sheet_id).sheet1
@@ -125,7 +125,6 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # [모델 버전] 현재 사용 가능한 모델로 설정
     model_name = 'gemini-2.0-flash'
     
     try:
@@ -154,16 +153,19 @@ st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon=
 
 st.markdown("""
 <style>
-    /* 전체 배경 블랙 */
+    /* [1] 앱 전체 배경: 강제 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [수정] IFRAME 반전 마법 (PC/모바일 공통 해결책) */
+    /* [2] IFRAME 강제 고정 (정공법) 
+       - background-color: 블랙으로 고정
+       - color-scheme: dark -> 브라우저가 '라이트모드'라고 멋대로 배경을 흰색으로 바꾸는 것을 차단함
+    */
     iframe { 
-        background-color: #ffffff !important; /* 일단 흰색으로 강제 */
-        filter: invert(1) hue-rotate(180deg) !important; /* 색상 반전 + 색조 복구 */
-        border: 1px solid #ddd !important; /* 반전되면 어두운 회색이 됨 */
+        background-color: #000000 !important; 
+        color-scheme: dark !important;
+        border: 1px solid #444 !important;
         border-radius: 12px; 
     }
     
@@ -184,7 +186,6 @@ st.markdown("""
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
     
-    /* [Table Alignment] */
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -315,14 +316,14 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [수정] 배경색 설정 제거 (기본값=흰색) -> CSS 반전으로 블랙 효과
+            # [핵심 변경] 배경색을 꼼수(투명/반전) 없이 '블랙'으로 고정
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
-                node={'labelProperty':'label', 'renderLabel':True}
-                # backgroundColor="#000000" <--- 삭제됨
+                node={'labelProperty':'label', 'renderLabel':True},
+                backgroundColor="#000000"  # Config에서도 블랙 명시
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
