@@ -1,0 +1,6 @@
+streamlit
+pandas
+streamlit-agraph
+google-generativeai
+gspread
+google-auth
