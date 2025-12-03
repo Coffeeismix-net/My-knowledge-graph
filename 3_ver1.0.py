@@ -62,14 +62,22 @@ def load_nodes():
 
 def add_node(label, group, summary, keywords):
     sheet = get_db_connection()
-    if not sheet: return False
+    if not sheet: return None # 실패시 None 반환
     try:
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
         sheet.append_row([new_id, label, group, summary, kw_str])
-        return True
-    except: return False
+        
+        # 성공하면 방금 만든 노드 데이터를 딕셔너리로 리턴!
+        return {
+            "id": new_id, 
+            "label": label, 
+            "group": group, 
+            "summary": summary, 
+            "keywords": keywords
+        }
+    except: return None
 
 def update_node(node_id, label, summary, keywords):
     sheet = get_db_connection()
@@ -172,7 +180,8 @@ if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = 
 if 'search_history' not in st.session_state: st.session_state['search_history'] = []
 if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
 
-st.session_state['nodes_db'] = load_nodes()
+if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
+    st.session_state['nodes_db'] = load_nodes()
 
 def add_ws(node_id):
     tid = str(node_id)
@@ -332,14 +341,30 @@ else:
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
                 
                 # [FIX Nesting Error] 수직 배치
-                if st.button("💾 Save", type="primary", use_container_width=True):
-                    add_node(tmp['title'], n_kw.split(',')[0].strip() if n_kw else "General", n_sum, [k.strip() for k in n_kw.split(',')])
-                    st.session_state['temp_analysis'] = None; st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
+        if st.button("💾 Save", type="primary", use_container_width=True):
+                    # 1. 키워드 정리
+                    final_keywords = [k.strip() for k in n_kw.split(',')]
+                    group_name = final_keywords[0] if final_keywords else "General"
+    
+                # 2. 노드 추가 함수 호출하고 결과 받기
+                new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
+    
+                # 3. 결과가 잘 왔으면 내 화면 리스트(session_state)에 즉시 추가!
+                if new_node_data:
+                    st.session_state['nodes_db'].append(new_node_data)
+                    st.session_state['temp_analysis'] = None
+                    st.success("Saved!")
+                    time.sleep(1)
+                    st.session_state['menu_mode'] = "Knowledge Graph"
+                    st.rerun()
+                else:
+                    st.error("저장 중 오류가 발생했습니다.")
+        if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
 
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
             st.info("Connected to Google Sheets & Gemini")
+
 
 
 
