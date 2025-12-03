@@ -18,16 +18,13 @@ SCOPES = [
 
 def get_db_connection():
     try:
-        # Streamlit Cloud의 Secrets 기능을 이용해 키를 불러옵니다.
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        client = gspread.authorize(creds)
-        # 구글 시트 이름으로 열기 (2단계에서 만든 이름과 같아야 함)
-        sheet = client.open("knowledge_graph_db").sheet1
-        return sheet
-    except Exception as e:
-        # 연결 실패 시 에러 메시지 (배포 후 로그 확인용)
-        # st.error(f"DB Connection Error: {e}") 
+        if "gcp_service_account" in st.secrets:
+            creds_dict = st.secrets["gcp_service_account"]
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            return client.open("knowledge_graph_db").sheet1
+        return None
+    except Exception:
         return None
 
 # ==========================================
@@ -45,7 +42,7 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 # ==========================================
-# 2. DATABASE OPERATIONS (Google Sheets)
+# 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
     sheet = get_db_connection()
@@ -83,7 +80,6 @@ def update_node(node_id, label, summary, keywords):
             r = cell.row
             kw_str = ",".join(keywords)
             grp = keywords[0] if keywords else "General"
-            # Col 2:Label, 3:Group, 4:Summary, 5:Keywords
             sheet.update_cell(r, 2, label)
             sheet.update_cell(r, 3, grp)
             sheet.update_cell(r, 4, summary)
@@ -99,17 +95,20 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE
+# 3. AI ENGINE (DEBUGGING VERSION)
 # ==========================================
 def ai_process(text):
-    # Streamlit Secrets에서 API Key 가져오기
-    try:
-        api_key = st.secrets["gemini"]["api_key"]
-    except:
-        return {"success": False, "error": "Secrets Config Error"}
-
+    # [CHECK 1] Secrets에서 API Key가 제대로 로드되는지 확인
+    if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
+        return {"success": False, "error": "Secrets 설정 오류: [gemini] api_key를 찾을 수 없습니다."}
+    
+    api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    candidates = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro']
+    
+    # 모델 후보군 (터미널 로그 기반 + 표준 모델)
+    candidates = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp']
+    
+    last_err = "No models tried yet."
     
     for model_name in candidates:
         try:
@@ -124,11 +123,16 @@ def ai_process(text):
             response = model.generate_content(prompt)
             data = json.loads(response.text.replace('```json','').replace('```','').strip())
             return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
-        except Exception: continue
-    return {"success": False, "error": "AI Error"}
+        except Exception as e:
+            # 실패한 이유를 기록 (화면에 보여주기 위함)
+            last_err = str(e)
+            continue
+            
+    # 모든 모델이 실패했을 때, 마지막 에러 메시지를 반환
+    return {"success": False, "error": f"AI 처리 실패 ({last_err})"}
 
 # ==========================================
-# 4. UI & LAYOUT
+# 4. UI STYLE & LAYOUT
 # ==========================================
 st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon="🧠")
 
@@ -139,18 +143,19 @@ st.markdown("""
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     iframe { filter: invert(1) hue-rotate(180deg) !important; border: 1px solid #333 !important; border-radius: 12px; background-color: white !important; }
     .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
-    
-    /* Button Override */
-    div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important; }
+
+    div[data-testid="column"] button { 
+        background: transparent !important; border: none !important; color: #ccc !important; 
+        text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
+    }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
     
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
     
-    /* Multiselect Style */
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; }
+    div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
 </style>
@@ -212,18 +217,15 @@ else:
 
     with left:
         all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
-        options = [h for h in st.session_state['search_history'] if h in all_kws_unique]
-        options += [k for k in all_kws_unique if k not in options]
+        options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
         default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
-        
         selected = st.multiselect("Search", options=options, default=default_val, max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        
         if selected:
-            new_val = selected[0]
-            if new_val != st.session_state['selected_keyword']:
-                st.session_state['selected_keyword'] = new_val
-                if new_val in st.session_state['search_history']: st.session_state['search_history'].remove(new_val)
-                st.session_state['search_history'].insert(0, new_val)
-                st.session_state['search_history'] = st.session_state['search_history'][:5]
+            if selected[0] != st.session_state['selected_keyword']:
+                st.session_state['selected_keyword'] = selected[0]
+                if selected[0] in st.session_state['search_history']: st.session_state['search_history'].remove(selected[0])
+                st.session_state['search_history'].insert(0, selected[0])
                 st.rerun()
         else:
             if st.session_state['selected_keyword']: st.session_state['selected_keyword'] = None; st.rerun()
@@ -235,15 +237,16 @@ else:
         h1, h2, h3 = st.columns([0.8, 3, 1.2])
         h1.markdown("**No.**"); h2.markdown("**Keyword**"); h3.markdown("**Cnt**")
         st.markdown("<div style='border-bottom: 1px solid #333; margin-bottom: 5px;'></div>", unsafe_allow_html=True)
+        
         with st.container(height=650):
             if not kw_counts.empty:
                 for i, row in enumerate(kw_counts.itertuples(), 1):
                     kw = row.keyword
-                    act_color = "#00ADB5" if kw == st.session_state['selected_keyword'] else "#fff"
-                    r_cols = st.columns([0.8, 3, 1.2])
-                    r_cols[0].markdown(f"<span style='color:{act_color}'>{i}</span>", unsafe_allow_html=True)
-                    if r_cols[1].button(kw, key=f"kbtn_{i}", use_container_width=True): st.session_state['selected_keyword'] = None if st.session_state['selected_keyword'] == kw else kw; st.rerun()
-                    r_cols[2].markdown(f"<span style='color:#888;'>{row.count}</span>", unsafe_allow_html=True)
+                    act = "#00ADB5" if kw == st.session_state['selected_keyword'] else "#fff"
+                    rc = st.columns([0.8, 3, 1.2])
+                    rc[0].markdown(f"<span style='color:{act}'>{i}</span>", unsafe_allow_html=True)
+                    if rc[1].button(kw, key=f"kbtn_{i}"): st.session_state['selected_keyword'] = None if st.session_state['selected_keyword'] == kw else kw; st.rerun()
+                    rc[2].markdown(f"<span style='color:#888'>{row.count}</span>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
     with main:
@@ -256,29 +259,20 @@ else:
 
         if st.session_state['menu_mode'] == "Knowledge Graph":
             ag_nodes = []
-            final_edges = []
             sel_kw = st.session_state['selected_keyword']
             if not df.empty:
                 for _, r in df.iterrows():
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
-                    clr, fclr, border_w, stroke_c = base_color, "black", 1, base_color
+                    clr, fclr, bw, sc = base_color, "black", 1, base_color
                     if sel_kw:
-                        if sel_kw in r['keywords']: clr, sz, fclr, border_w, stroke_c = "#00FF00", sz*1.5, "black", 4, "#FFFFFF"
-                        else: clr, fclr, sz, border_w, stroke_c = "#222222", "#444444", 15, 1, "#333"
-                    ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=border_w, borderColor=stroke_c))
-                for e in edges:
-                    e_w, e_c = 1, "#555"
-                    if sel_kw:
-                        src = df[df['id'] == e.source].iloc[0]
-                        tgt = df[df['id'] == e.to].iloc[0]
-                        if sel_kw in src['keywords'] and sel_kw in tgt['keywords']: e_w, e_c = 4, "#00FF00"
-                        else: e_c = "#222"
-                    final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
+                        if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "black", 4, "#FFFFFF"
+                        else: clr, fclr, sz, bw, sc = "#222", "#444", 15, 1, "#333"
+                    ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
             cfg = Config(width="100%", height=600, directed=False, physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, node={'labelProperty':'label', 'renderLabel':True})
-            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
+            sel = agraph(nodes=ag_nodes, edges=edges, config=cfg)
             if sel and sel != st.session_state['last_selection']: st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
 
             wsn = st.session_state['workspace_nodes']
@@ -293,9 +287,10 @@ else:
                             nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
-                            if st.button("💾 Update", key=f"up_{n['id']}", use_container_width=True): update_act(n['id'], nl, ns, nk)
-                            if st.button("🗑️ Delete", key=f"del_{n['id']}", use_container_width=True): delete_act(n['id'])
-                            if st.button("❌ Close", key=f"cl_{n['id']}", use_container_width=True): close_ws(n['id']); st.rerun()
+                            # [FIX Nesting Error] 버튼들을 세로로 배치
+                            if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
+                            if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
+                            if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
 
         elif st.session_state['menu_mode'] == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
@@ -309,17 +304,18 @@ else:
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.error(f"AI Error: {tmp['error']}")
+                if not tmp['success']: st.error(f"⚠️ {tmp['error']}")
                 else: st.success("Analysis Complete!")
                 st.markdown(f"**Title:** {tmp['title']}")
                 n_sum = st.text_area("Summary", value=tmp['summary'])
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                c1, c2 = st.columns(2)
-                if c1.button("💾 Save", type="primary"):
+                
+                # [FIX Nesting Error] 여기서도 컬럼 대신 수직 배치 (안정성 우선)
+                if st.button("💾 Save", type="primary", use_container_width=True):
                     add_node(tmp['title'], n_kw.split(',')[0].strip() if n_kw else "General", n_sum, [k.strip() for k in n_kw.split(',')])
                     st.session_state['temp_analysis'] = None; st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-                if c2.button("Cancel"): st.session_state['temp_analysis'] = None; st.rerun()
+                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
 
         elif st.session_state['menu_mode'] == "Settings":
             st.header("Settings")
-            st.info("Using Google Sheets Database & Secrets for API Key")
+            st.info("Connected to Google Sheets & Gemini")
