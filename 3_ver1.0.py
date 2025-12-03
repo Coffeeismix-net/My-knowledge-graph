@@ -18,13 +18,22 @@ SCOPES = [
 
 def get_db_connection():
     try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = st.secrets["gcp_service_account"]
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-            client = gspread.authorize(creds)
-            return client.open("knowledge_graph_db").sheet1
-        return None
-    except Exception:
+        # 1. secrets에 해당 섹션이 있는지 확인
+        if "gcp_service_account" not in st.secrets:
+            st.error("❌ Secrets 설정 오류: 'gcp_service_account' 섹션이 없습니다.")
+            return None
+
+        # 2. 인증 시도
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        client = gspread.authorize(creds)
+        
+        # 3. 시트 열기 (여기서 이름이 틀리면 에러 발생)
+        return client.open("knowledge_graph_db").sheet1
+        
+    except Exception as e:
+        # 정확한 에러 원인을 화면에 출력
+        st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
 
 # ==========================================
@@ -386,6 +395,7 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
 
 
 
