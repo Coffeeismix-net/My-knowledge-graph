@@ -153,18 +153,14 @@ st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon=
 
 st.markdown("""
 <style>
-    /* [1] 앱 전체 배경: 강제 블랙 */
+    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] IFRAME 강제 고정 (정공법) 
-       - background-color: 블랙으로 고정
-       - color-scheme: dark -> 브라우저가 '라이트모드'라고 멋대로 배경을 흰색으로 바꾸는 것을 차단함
-    */
+    /* [2] IFRAME 강제 블랙 (PC/모바일 공통) */
     iframe { 
         background-color: #000000 !important; 
-        color-scheme: dark !important;
         border: 1px solid #444 !important;
         border-radius: 12px; 
     }
@@ -301,10 +297,19 @@ else:
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
-                    clr, fclr, bw, sc = base_color, "black", 1, base_color
+                    
+                    # [수정 1] fclr(글자색)를 "black" -> "white"로 변경하여 검은 배경에서 보이게 함
+                    # clr:노드색, fclr:글자색, bw:테두리두께, sc:테두리색
+                    clr, fclr, bw, sc = base_color, "white", 1, base_color
+                    
                     if sel_kw:
-                        if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "black", 4, "#FFFFFF"
-                        else: clr, fclr, sz, bw, sc = "#222", "#444", 15, 1, "#333"
+                        if sel_kw in r['keywords']: 
+                            # 선택된 노드: 초록색, 글자는 흰색
+                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
+                        else: 
+                            # 비활성 노드: 어두운 회색, 글자는 어두운 회색
+                            clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
+                    
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
                 for e in edges:
@@ -316,14 +321,14 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [핵심 변경] 배경색을 꼼수(투명/반전) 없이 '블랙'으로 고정
+            # [수정 2] Config에 'font': {'color': 'white'} 전역 설정 추가
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
-                node={'labelProperty':'label', 'renderLabel':True},
-                backgroundColor="#000000"  # Config에서도 블랙 명시
+                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
+                backgroundColor="#000000"
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
