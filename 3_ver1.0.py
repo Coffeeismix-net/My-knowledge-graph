@@ -18,21 +18,24 @@ SCOPES = [
 
 def get_db_connection():
     try:
-        # 1. secrets에 해당 섹션이 있는지 확인
+        # 1. secrets 확인
         if "gcp_service_account" not in st.secrets:
             st.error("❌ Secrets 설정 오류: 'gcp_service_account' 섹션이 없습니다.")
             return None
 
-        # 2. 인증 시도
+        # 2. 인증
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        # 3. 시트 열기 (여기서 이름이 틀리면 에러 발생)
-        return client.open("knowledge_graph_db").sheet1
+        # 3. [변경] 이름 대신 ID로 직접 열기 (훨씬 안정적!)
+        # 아래 따옴표 안에 아까 복사한 긴 ID를 넣어주세요.
+        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"  # <--- 여기에 ID 붙여넣기
+        
+        return client.open_by_key(sheet_id).sheet1
         
     except Exception as e:
-        # 정확한 에러 원인을 화면에 출력
+        # 에러 발생 시 상세 내용 출력
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
 
@@ -395,6 +398,7 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
 
 
 
