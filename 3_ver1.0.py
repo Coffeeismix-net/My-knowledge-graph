@@ -158,10 +158,11 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] 핵심 수정: 투명화 전략 */
-    /* 반전 필터(invert) 제거함. 무조건 투명하게 만들어서 뒤의 검은 배경이 비치게 함 */
+    /* [2] IFRAME 강제 블랙 (PC 흰색 문제 해결) */
+    /* 투명(transparent) 대신 확실한 블랙(#000000)을 지정 */
     iframe { 
-        background-color: transparent !important; 
+        background-color: #000000 !important; 
+        color-scheme: dark !important; /* 브라우저에게 다크모드라고 알려줌 */
         border: 1px solid #444 !important;
         border-radius: 12px; 
     }
@@ -308,15 +309,13 @@ else:
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
                     
-                    # [글자색 수정] 배경이 검은색이니까 글자는 '흰색'
+                    # [글자색 확인] 배경이 검정이므로 글자는 '흰색'
                     clr, fclr, bw, sc = base_color, "white", 1, base_color
                     
                     if sel_kw:
                         if sel_kw in r['keywords']: 
-                            # 활성 노드
                             clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: 
-                            # 비활성 노드 (어둡게 처리)
                             clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
                     
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
@@ -330,16 +329,16 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [핵심 수정] backgroundColor="rgba(0,0,0,0)" -> 투명
-            # 이렇게 하면 뒤에 있는 'stApp'의 검은색 배경(#000000)이 비쳐 보임
-            # PC/모바일 상관없이 무조건 검은색이 됨
+            # [최종 해결] backgroundColor="#000000" (블랙 강제)
+            # 투명(transparent)을 쓰면 PC 브라우저 기본값(흰색)이 비치므로,
+            # 아예 검은색으로 칠해버려서 PC 브라우저가 흰색을 들이밀 틈을 안 줍니다.
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
                 node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                backgroundColor="rgba(0,0,0,0)" 
+                backgroundColor="#000000" 
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
