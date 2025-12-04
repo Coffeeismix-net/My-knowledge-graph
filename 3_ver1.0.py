@@ -158,11 +158,11 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] 핵심: 무조건 흰색으로 만들고 -> 반전시킨다 */
+    /* [2] 핵심 수정: 투명화 전략 */
+    /* 반전 필터(invert) 제거함. 무조건 투명하게 만들어서 뒤의 검은 배경이 비치게 함 */
     iframe { 
-        background-color: #ffffff !important; /* PC/모바일 강제 화이트 */
-        filter: invert(1) hue-rotate(180deg) !important; /* 색상 반전 (흰->검) + 색조 복구 */
-        border: 1px solid #ddd !important; /* 반전되면 어두운 회색이 됨 */
+        background-color: transparent !important; 
+        border: 1px solid #444 !important;
         border-radius: 12px; 
     }
     
@@ -308,17 +308,16 @@ else:
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
                     
-                    # [반전 전략] 글자색을 '검정'으로 설정 -> 반전되면 '흰색'이 됨
-                    clr, fclr, bw, sc = base_color, "black", 1, base_color
+                    # [글자색 수정] 배경이 검은색이니까 글자는 '흰색'
+                    clr, fclr, bw, sc = base_color, "white", 1, base_color
                     
                     if sel_kw:
                         if sel_kw in r['keywords']: 
-                            # 활성 노드: 초록색은 hue-rotate로 보존됨. 글자(검정) -> 흰색
-                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#000000", 4, "#000000"
+                            # 활성 노드
+                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: 
-                            # 비활성 노드: 어두운 회색 -> 밝은 회색으로 반전되는데, 
-                            # 여기서는 일부러 밝은 색(#ddd)을 주어서 반전 후 어둡게 만듬
-                            clr, fclr, sz, bw, sc = "#eee", "#999", 15, 1, "#ddd"
+                            # 비활성 노드 (어둡게 처리)
+                            clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
                     
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
@@ -328,17 +327,19 @@ else:
                         src = df[df['id'] == e.source].iloc[0]
                         tgt = df[df['id'] == e.to].iloc[0]
                         if sel_kw in src['keywords'] and sel_kw in tgt['keywords']: e_w, e_c = 4, "#00FF00"
-                        else: e_c = "#eee" # 반전되어 어두워짐
+                        else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [반전 전략] 배경을 흰색(#ffffff)으로 줌 -> 반전되어 리얼 블랙(#000000)이 됨
+            # [핵심 수정] backgroundColor="rgba(0,0,0,0)" -> 투명
+            # 이렇게 하면 뒤에 있는 'stApp'의 검은색 배경(#000000)이 비쳐 보임
+            # PC/모바일 상관없이 무조건 검은색이 됨
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
-                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'black'}}, # 기본 글자 검정
-                backgroundColor="#ffffff" # 기본 배경 화이트
+                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
+                backgroundColor="rgba(0,0,0,0)" 
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
