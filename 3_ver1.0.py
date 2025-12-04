@@ -149,7 +149,7 @@ def ai_process(text):
 # ==========================================
 # 4. UI STYLE & LAYOUT
 # ==========================================
-st.set_page_config(layout="wide", page_title="Neural Knowledge Base", page_icon="🧠")
+st.set_page_config(layout="wide", page_title="My Knowledge Center", page_icon="🧠")
 
 st.markdown("""
 <style>
@@ -221,7 +221,7 @@ def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['las
 if not st.session_state['logged_in']:
     _, c, _ = st.columns([1,1,1])
     with c:
-        st.markdown("<br><br><h1 style='text-align: center;'>🧠 Neural Base</h1>", unsafe_allow_html=True)
+        st.markdown("<br><br><h1 style='text-align: center;'>🧠 My Knowledge Center</h1>", unsafe_allow_html=True)
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
@@ -410,3 +410,4 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
