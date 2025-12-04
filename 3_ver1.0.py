@@ -223,9 +223,23 @@ if not st.session_state['logged_in']:
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
+            
+            # [보안 업데이트] Secrets에서 아이디/비번 가져와서 비교
             if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if uid == 'admin' and upw == '1234': st.session_state['logged_in'] = True; st.rerun()
-                else: st.error("Check ID/PW")
+                # 1. Secrets에 login 설정이 있는지 확인
+                if "login" in st.secrets:
+                    secret_id = st.secrets["login"]["id"]
+                    secret_pw = st.secrets["login"]["pw"]
+                    
+                    # 2. 입력값과 비교
+                    if uid == secret_id and upw == secret_pw:
+                        st.session_state['logged_in'] = True
+                        st.rerun()
+                    else:
+                        st.error("Check ID/PW")
+                else:
+                    # Secrets 설정을 안 했을 경우 (비상용)
+                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
 else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -298,16 +312,12 @@ else:
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
                     
-                    # [수정 1] fclr(글자색)를 "black" -> "white"로 변경하여 검은 배경에서 보이게 함
-                    # clr:노드색, fclr:글자색, bw:테두리두께, sc:테두리색
                     clr, fclr, bw, sc = base_color, "white", 1, base_color
                     
                     if sel_kw:
                         if sel_kw in r['keywords']: 
-                            # 선택된 노드: 초록색, 글자는 흰색
                             clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: 
-                            # 비활성 노드: 어두운 회색, 글자는 어두운 회색
                             clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
                     
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
@@ -321,7 +331,6 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [수정 2] Config에 'font': {'color': 'white'} 전역 설정 추가
             cfg = Config(
                 width="100%", 
                 height=600, 
