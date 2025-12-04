@@ -158,10 +158,11 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] IFRAME 강제 블랙 (PC/모바일 공통) */
+    /* [2] 핵심: 무조건 흰색으로 만들고 -> 반전시킨다 */
     iframe { 
-        background-color: #000000 !important; 
-        border: 1px solid #444 !important;
+        background-color: #ffffff !important; /* PC/모바일 강제 화이트 */
+        filter: invert(1) hue-rotate(180deg) !important; /* 색상 반전 (흰->검) + 색조 복구 */
+        border: 1px solid #ddd !important; /* 반전되면 어두운 회색이 됨 */
         border-radius: 12px; 
     }
     
@@ -224,21 +225,16 @@ if not st.session_state['logged_in']:
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
             
-            # [보안 업데이트] Secrets에서 아이디/비번 가져와서 비교
             if st.form_submit_button("Login", type="primary", use_container_width=True):
-                # 1. Secrets에 login 설정이 있는지 확인
                 if "login" in st.secrets:
                     secret_id = st.secrets["login"]["id"]
                     secret_pw = st.secrets["login"]["pw"]
-                    
-                    # 2. 입력값과 비교
                     if uid == secret_id and upw == secret_pw:
                         st.session_state['logged_in'] = True
                         st.rerun()
                     else:
                         st.error("Check ID/PW")
                 else:
-                    # Secrets 설정을 안 했을 경우 (비상용)
                     st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
 else:
     left, main = st.columns([1.5, 4.5])
@@ -312,13 +308,17 @@ else:
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
                     
-                    clr, fclr, bw, sc = base_color, "white", 1, base_color
+                    # [반전 전략] 글자색을 '검정'으로 설정 -> 반전되면 '흰색'이 됨
+                    clr, fclr, bw, sc = base_color, "black", 1, base_color
                     
                     if sel_kw:
                         if sel_kw in r['keywords']: 
-                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
+                            # 활성 노드: 초록색은 hue-rotate로 보존됨. 글자(검정) -> 흰색
+                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#000000", 4, "#000000"
                         else: 
-                            clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
+                            # 비활성 노드: 어두운 회색 -> 밝은 회색으로 반전되는데, 
+                            # 여기서는 일부러 밝은 색(#ddd)을 주어서 반전 후 어둡게 만듬
+                            clr, fclr, sz, bw, sc = "#eee", "#999", 15, 1, "#ddd"
                     
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
@@ -328,16 +328,17 @@ else:
                         src = df[df['id'] == e.source].iloc[0]
                         tgt = df[df['id'] == e.to].iloc[0]
                         if sel_kw in src['keywords'] and sel_kw in tgt['keywords']: e_w, e_c = 4, "#00FF00"
-                        else: e_c = "#222"
+                        else: e_c = "#eee" # 반전되어 어두워짐
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
+            # [반전 전략] 배경을 흰색(#ffffff)으로 줌 -> 반전되어 리얼 블랙(#000000)이 됨
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={"enabled":True, "stabilization":{"enabled":True, "iterations":200}}, 
-                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                backgroundColor="#000000"
+                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'black'}}, # 기본 글자 검정
+                backgroundColor="#ffffff" # 기본 배경 화이트
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
