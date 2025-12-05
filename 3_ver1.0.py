@@ -2,45 +2,42 @@ import streamlit as st
 from streamlit_agraph import agraph, Node, Edge, Config
 import random
 
-st.set_page_config(layout="wide", page_title="Physics Test V2", page_icon="🧪")
+st.set_page_config(layout="wide", page_title="Physics Test V3", page_icon="🧪")
 
 # ==========================================
-# 1. 사이드바 설정 (값 변경 시 그래프 강제 새로고침)
-# ==========================================
-st.sidebar.header("🧪 물리 엔진 실험실 V2")
-st.sidebar.caption("이제 값이 즉시 적용됩니다.")
-
-# [1] 점성 (Damping)
-# 값이 클수록(1.0) 물엿처럼 끈적하고, 작을수록(0.1) 공기처럼 가볍습니다.
-damping = st.sidebar.slider("점성 (Damping)", 0.0, 1.0, 0.90, 0.05)
-
-# [2] 척력 (Repulsion)
-# 절대값이 클수록(-1000) 서로 강하게 밀어냅니다. (겹침 방지 핵심)
-repulsion = st.sidebar.slider("척력 (Repulsion)", -2000, -100, -1000, 100)
-
-# [3] 연결선 길이 (Spring Length)
-spring_len = st.sidebar.slider("노드 간격 (Length)", 50, 500, 200, 10)
-
-# [4] 겹침 방지
-overlap = st.sidebar.checkbox("겹침 방지 (Avoid Overlap)", value=True)
-
-# ==========================================
-# 2. 데이터 생성 (고정된 데이터)
+# 1. 테스트용 데이터 생성
 # ==========================================
 nodes = []
 edges = []
 nodes.append(Node(id="center", label="Center", size=40, color="#FF0055"))
 
-# 뭉침 현상을 확인하기 위해 일부러 빽빽하게 생성
+# 뭉침 현상 확인을 위해 노드 20개 생성
 for i in range(1, 20):
     nodes.append(Node(id=f"node_{i}", label=f"Node_{i}", size=20, color="#00ADB5"))
     edges.append(Edge(source="center", target=f"node_{i}", color="#555"))
-    # 노드끼리도 연결해서 복잡도 증가
+    # 서로 얽히게 만듦
     if i > 1:
         edges.append(Edge(source=f"node_{i}", target=f"node_{i-1}", color="#333"))
 
 # ==========================================
-# 3. 그래프 설정
+# 2. 물리 엔진 튜닝 패널 (사이드바)
+# ==========================================
+st.sidebar.header("🧪 물리 엔진 실험실 V3")
+
+# [1] 점성 (Damping): 높을수록(0.9) 물속처럼 묵직함
+damping = st.sidebar.slider("점성 (Damping)", 0.1, 1.0, 0.9, 0.1)
+
+# [2] 척력 (Repulsion): 절대값이 클수록(-1000) 서로 강하게 밀어냄
+repulsion = st.sidebar.slider("척력 (Gravity)", -2000, -50, -100, 50)
+
+# [3] 연결선 길이
+spring_len = st.sidebar.slider("간격 (Spring Length)", 50, 500, 200, 50)
+
+# [4] 겹침 방지
+overlap = st.sidebar.checkbox("겹침 방지 (Avoid Overlap)", value=True)
+
+# ==========================================
+# 3. 그래프 설정 (Config)
 # ==========================================
 config = Config(
     width="100%",
@@ -56,30 +53,34 @@ config = Config(
     },
     physics={
         "enabled": True,
-        # 'forceAtlas2Based'는 유기적인 움직임에 좋지만 설정이 까다로울 수 있어,
-        # 가장 강력한 'barnesHut' 솔버로 변경하여 테스트합니다.
-        "solver": "barnesHut",
-        "barnesHut": {
-            "gravitationalConstant": repulsion, # 슬라이더 값 적용
-            "centralGravity": 0.1,
-            "springLength": spring_len,         # 슬라이더 값 적용
-            "springConstant": 0.04,
-            "damping": damping,                 # 슬라이더 값 적용
-            "avoidOverlap": 1 if overlap else 0 # 슬라이더 값 적용
+        # 유기적인 움직임에 최적화된 Solver 사용
+        "solver": "forceAtlas2Based",
+        "forceAtlas2Based": {
+            "theta": 0.5,
+            "gravitationalConstant": repulsion, # [척력] 슬라이더 값
+            "centralGravity": 0.01,             # [중력] 중앙 유지
+            "springConstant": 0.08,             # [탄성] 끈의 당김
+            "springLength": spring_len,         # [간격] 슬라이더 값
+            "damping": damping,                 # [점성] 슬라이더 값 (핵심!)
+            "avoidOverlap": 1 if overlap else 0 # [겹침 방지]
         },
         "stabilization": {
-            "enabled": False, # [테스트용] 움직임을 보기 위해 끕니다.
+            # [핵심] True로 설정해야 계산 후 딱 멈춥니다!
+            "enabled": True,    
+            "iterations": 1000, 
+            "updateInterval": 50,
+            "onlyDynamicEdges": False,
+            "fit": True
         }
     },
     backgroundColor="#000000"
 )
 
 # ==========================================
-# 4. 렌더링 (Key 부여로 강제 리프레시)
+# 4. 렌더링 (key 파라미터 삭제됨)
 # ==========================================
-st.markdown("### 🧪 Physics Simulation Test V2")
-st.info("슬라이더를 움직이면 그래프가 새로고침되며 적용됩니다.")
+st.markdown("### 🧪 Physics Simulation Test")
+st.info("값이 바뀌면 그래프가 새로고침됩니다. (초기 계산 후 멈춤)")
 
-# key에 설정값을 넣어서, 값이 바뀔 때마다 컴포넌트를 새로 만듭니다.
-unique_key = f"graph_{damping}_{repulsion}_{spring_len}_{overlap}"
-agraph(nodes=nodes, edges=edges, config=config, key=unique_key)
+# 에러가 났던 key 파라미터를 제거했습니다.
+agraph(nodes=nodes, edges=edges, config=config)
