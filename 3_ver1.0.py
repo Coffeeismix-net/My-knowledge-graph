@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components # HTML 컴포넌트용 (그래프 시각화 변경)
+from streamlit_agraph import agraph, Node, Edge, Config
 import time
 import google.generativeai as genai
 import json
@@ -9,7 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GOOGLE SHEETS CONNECTION (기존 로직 유지)
+# 0. GOOGLE SHEETS CONNECTION
 # ==========================================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -36,7 +36,7 @@ def get_db_connection():
         return None
 
 # ==========================================
-# 1. HELPER: Dynamic Color (기존 로직 유지)
+# 1. HELPER: Dynamic Color
 # ==========================================
 FIXED_COLORS = { 
     "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", 
@@ -50,7 +50,7 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 # ==========================================
-# 2. DATABASE OPERATIONS (기존 로직 유지)
+# 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
     sheet = get_db_connection()
@@ -116,7 +116,7 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE (기존 로직 유지)
+# 3. AI ENGINE
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
@@ -147,272 +147,28 @@ def ai_process(text):
         return {"success": False, "error": f"AI Error: {err_msg}"}
 
 # ==========================================
-# 4. [NEW] 물방울 유기적 그래프 렌더링 함수
+# 4. UI STYLE & LAYOUT
 # ==========================================
-def render_organic_graph(nodes_data, selected_keyword=None):
-    """
-    기존 agraph 대신 force-graph 라이브러리를 사용하여 
-    물속을 유영하는 듯한 움직임을 구현하는 HTML/JS 생성 함수
-    """
-    # 1. 데이터 전처리 (Python List -> JSON)
-    nodes_json = []
-    edges_json = []
-    
-    # 노드 생성
-    for n in nodes_data:
-        color = get_group_color(n['group'])
-        val = 10 
-        
-        is_highlight = False
-        if selected_keyword and selected_keyword in n['keywords']:
-            is_highlight = True
-            color = "#00FF00" # 하이라이트 (형광 초록)
-            val = 20
-        elif selected_keyword:
-            color = "#333333" # 비활성 노드 (어둡게)
-
-        nodes_json.append({
-            "id": n['id'], 
-            "name": n['label'], 
-            "group": n['group'], 
-            "color": color, 
-            "val": val,
-            "is_highlight": is_highlight
-        })
-
-    # 엣지 생성
-    for i in range(len(nodes_data)):
-        for j in range(i+1, len(nodes_data)):
-            src = nodes_data[i]
-            tgt = nodes_data[j]
-            common = set(src['keywords']) & set(tgt['keywords'])
-            if common:
-                width = 1
-                color = "#444444"
-                if selected_keyword and selected_keyword in common:
-                    width = 3
-                    color = "#00FF00"
-                
-                edges_json.append({
-                    "source": src['id'], 
-                    "target": tgt['id'], 
-                    "color": color,
-                    "width": width
-                })
-
-    data_json = json.dumps({"nodes": nodes_json, "links": edges_json})
-
-    # 2. HTML + JS 템플릿 (물리 엔진 튜닝 적용)
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style> 
-        body {{ margin: 0; background-color: #000000; overflow: hidden; }} 
-        #graph {{ width: 100%; height: 600px; }}
-      </style>
-      <script src="//unpkg.com/force-graph"></script>
-    </head>
-    <body>
-      <div id="graph"></div>
-      <script>
-        const gData = {data_json};
-
-        const Graph = ForceGraph()
-          (document.getElementById('graph'))
-            .graphData(gData)
-            .backgroundColor('#000000') // 리얼 블랙 배경
-            .nodeId('id')
-            .nodeVal('val')
-            .nodeLabel('name')
-            .nodeColor('color')
-            .linkColor('color')
-            .linkWidth('width')
-            
-            // [물멍 포인트 1] 점성 부여 (묵직한 움직임)
-            .d3VelocityDecay(0.6)
-            // [물멍 포인트 2] 감쇠 제거 (멈추지 않음)
-            .d3AlphaDecay(0)       
-            
-            // 노드 그리기 (Canvas API)
-            .nodeCanvasObject((node, ctx, globalScale) => {{
-              const label = node.name;
-              const fontSize = 12/globalScale;
-              ctx.font = `${{fontSize}}px Sans-Serif`;
-              
-              const r = Math.sqrt(node.val) * 4;
-              ctx.beginPath();
-              ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
-              ctx.fillStyle = node.color;
-              ctx.fill();
-              
-              if (node.is_highlight) {{
-                  ctx.strokeStyle = '#FFFFFF';
-                  ctx.lineWidth = 2 / globalScale;
-                  ctx.stroke();
-              }}
-
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillText(label, node.x, node.y + r + fontSize);
-            }})
-            .onNodeHover(node => {{
-                document.getElementById('graph').style.cursor = node ? 'pointer' : null;
-            }});
-
-        // [물멍 포인트 3] 영원한 부유 (Floating)
-        Graph.d3Force('charge').strength(-150);
-        Graph.d3Force('link').distance(100);
-        
-        // 1초 후 부유 모드 시작
-        setTimeout(() => {{
-            Graph.d3Force('charge').strength(-100); 
-            Graph.d3AlphaTarget(0.01); // 지속적인 에너지 공급
-        }}, 1000);
-
-      </script>
-    </body>
-    </html>
-    """
-    components.html(html_code, height=600, scrolling=False)
-
-
-# ==========================================
-# 5. UI STYLE & LAYOUT
-# ==========================================
-# [수정] 아이콘 파일 에러 방지를 위해 이모지로 변경
+# [수정] 아이콘 파일 에러 방지를 위해 이모지 사용
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
 st.markdown("""
 <style>
+    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
-    h1 { margin: 0; padding: 0; }
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
-</style>
-""", unsafe_allow_html=True)
+    .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
+    
+    /* [2] IFRAME 강제 블랙 (PC 흰색 문제 해결) */
+    /* 투명(transparent) 대신 확실한 블랙(#000000)을 지정 */
+    iframe { 
+        background-color: #000000 !important; 
+        color-scheme: dark !important; /* 브라우저에게 다크모드라고 알려줌 */
+        border: 1px solid #444 !important;
+        border-radius: 12px; 
+    }
+    
+    .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
 
-# [수정] 이미지 로딩 제거하고 깔끔한 텍스트 헤더로 변경
-st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-
-# 세션 초기화
-if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
-if 'menu_mode' not in st.session_state: st.session_state['menu_mode'] = "Knowledge Graph"
-if 'workspace_nodes' not in st.session_state: st.session_state['workspace_nodes'] = []
-if 'selected_keyword' not in st.session_state: st.session_state['selected_keyword'] = None
-if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = None
-if 'search_history' not in st.session_state: st.session_state['search_history'] = []
-if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
-
-if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
-    st.session_state['nodes_db'] = load_nodes()
-
-# ------------------------------------
-# 로그인 화면
-# ------------------------------------
-if not st.session_state['logged_in']:
-    _, c, _ = st.columns([1,1,1])
-    with c:
-        with st.form("login"):
-            st.markdown("### User Login")
-            uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
-            
-            if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if "login" in st.secrets:
-                    secret_id = st.secrets["login"]["id"]
-                    secret_pw = st.secrets["login"]["pw"]
-                    if uid == secret_id and upw == secret_pw:
-                        st.session_state['logged_in'] = True
-                        st.rerun()
-                    else:
-                        st.error("Check ID/PW")
-                else:
-                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
-else:
-    left, main = st.columns([1.5, 4.5])
-    df = pd.DataFrame(st.session_state['nodes_db'])
-    # 통계 계산
-    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
-    if not df.empty:
-        df['id'] = df['id'].astype(str)
-        all_kw = []
-        for ks in df['keywords']: all_kw.extend(ks)
-        if all_kw:
-            kw_counts = pd.Series(all_kw).value_counts().reset_index()
-            kw_counts.columns = ['keyword', 'count']
-
-    # [왼쪽] 검색 패널
-    with left:
-        st.markdown("### 🔍 Search")
-        if not kw_counts.empty:
-            options = kw_counts['keyword'].tolist()
-            selected = st.multiselect("Keyword", options=options, default=([st.session_state['selected_keyword']] if st.session_state['selected_keyword'] else []), max_selections=1)
-            
-            if selected: st.session_state['selected_keyword'] = selected[0]
-            else: st.session_state['selected_keyword'] = None
-
-            st.markdown("---")
-            with st.container(height=500):
-                for row in kw_counts.itertuples():
-                    col_l, col_r = st.columns([3, 1])
-                    label = row.keyword
-                    if label == st.session_state['selected_keyword']:
-                        col_l.markdown(f":green[**{label}**]")
-                    else:
-                        if col_l.button(label, key=f"btn_{label}"):
-                            st.session_state['selected_keyword'] = label
-                            st.rerun()
-                    col_r.caption(f"{row.count}")
-
-    # [오른쪽] 메인 콘텐츠
-    with main:
-        m1, m2, m3, m4 = st.columns([6, 1, 1, 1])
-        m1.markdown("### 🌌 Knowledge Universe")
-        if m2.button("Graph"): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if m3.button("Add"): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        if m4.button("Out"): st.session_state['logged_in'] = False; st.rerun()
-
-        # 1. 그래프 뷰 (여기에 새로운 물방울 그래프 적용!)
-        if st.session_state['menu_mode'] == "Knowledge Graph":
-            render_organic_graph(st.session_state['nodes_db'], st.session_state['selected_keyword'])
-            st.info("💡 팁: 노드들은 물속에 떠 있는 것처럼 천천히 움직입니다. 마우스로 드래그해 보세요!")
-
-        # 2. 데이터 추가 뷰 (기존 로직 유지)
-        elif st.session_state['menu_mode'] == "Add Data":
-            st.info("AI Auto-Analysis Node Creator")
-            if not st.session_state['temp_analysis']:
-                ti = st.text_input("Title")
-                co = st.text_area("Content", height=200)
-                if st.button("🔍 AI Analyze", type="primary"):
-                    if ti and co:
-                        with st.spinner("Thinking..."):
-                            res = ai_process(co)
-                            st.session_state['temp_analysis'] = { 
-                                "title": ti, "content": co, 
-                                "summary": res.get('summary',''), "keywords": res.get('keywords',''), 
-                                "success": res['success'], "error": res.get('error','') 
-                            }
-                            st.rerun()
-            else:
-                tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.error(f"{tmp['error']}")
-                else: st.success("Analysis Complete!")
-                
-                st.markdown(f"**Title:** {tmp['title']}")
-                n_sum = st.text_area("Summary", value=tmp['summary'])
-                n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                
-                if st.button("💾 Save", type="primary", use_container_width=True):
-                    final_keywords = [k.strip() for k in n_kw.split(',')]
-                    grp = final_keywords[0] if final_keywords else "General"
-                    new_node = add_node(tmp['title'], grp, n_sum, final_keywords)
-                    if new_node:
-                        st.session_state['nodes_db'].append(new_node)
-                        st.session_state['temp_analysis'] = None
-                        st.success("Saved!"); time.sleep(1); 
-                        st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-
-                if st.button("Cancel", use_container_width=True): 
-                    st.session_state['temp_analysis'] = None; st.rerun()
+    div[data-testid="column"] button { 
+        background: transparent !important; border: none !important; color:
