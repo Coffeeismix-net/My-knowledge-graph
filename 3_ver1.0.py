@@ -282,7 +282,7 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ==========================================
-            # 💧 REAL WATER DROPLET EFFECT (핵심 수정)
+            # 💧 EXTREME JELLY PHYSICS (확실한 물방울 효과)
             # ==========================================
             cfg = Config(
                 width="100%", 
@@ -293,25 +293,25 @@ else:
                     "enabled": True,
                     "solver": "forceAtlas2Based",
                     
-                    # [1] 물방울 물리값 (Tweak)
+                    # [1] 과감한 튜닝: 물보다는 '젤리'에 가까운 탄성 부여
                     "forceAtlas2Based": {
-                        "gravitationalConstant": -100, # 노드 사이 척력 (서로 밀어냄)
-                        "centralGravity": 0.005,       # 중앙으로 아주 약하게 당김 (둥실거림 유도)
+                        "gravitationalConstant": -50, 
+                        "centralGravity": 0.005,
                         "springLength": 100,
-                        "springConstant": 0.05,        # [중요] 스프링을 매우 느슨하게 -> 젤리 같은 느낌
-                        "damping": 0.2,                # [중요] 0.2로 낮춤 -> 관성이 유지되어 오래 흔들림 (0.4는 너무 뻑뻑함)
+                        "springConstant": 0.02, # 0.08 -> 0.02 (매우 느슨하게)
+                        "damping": 0.08,        # 0.4 -> 0.08 (저항 거의 없음, 오래 흔들림)
                         "avoidOverlap": 1
                     },
                     
-                    # [2] 초기화 시 움직임 허용 (Stabilization: OFF)
-                    # False로 해야 처음 로딩될 때 노드들이 꼬물꼬물 자리를 잡는 게 보입니다.
+                    # [2] 초기화 움직임 강제 노출
+                    # stabilization을 끄면 로딩 직후 노드들이 제자리를 찾아가는 '살아있는' 모습이 보입니다.
                     "stabilization": {
                         "enabled": False, 
+                        "iterations": 200,      
                     },
                     
-                    # [3] 무한 움직임 방지 (Stop Condition)
-                    # 계속 움직이는 건 싫다고 하셨으니, 속도가 0.1 이하로 떨어지면 멈추게 합니다.
-                    "minVelocity": 0.1 
+                    # [3] 정지 조건 완화
+                    "minVelocity": 0.5 
                 },
                 
                 node={
