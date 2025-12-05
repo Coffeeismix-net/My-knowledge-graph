@@ -195,7 +195,7 @@ st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센�
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# [수정] 세션 상태 초기화 (물리 엔진 설정값 저장용)
+# [설정 저장소] 초기값 세팅 (한 번만 실행됨)
 # ----------------------------------------------------
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'menu_mode' not in st.session_state: st.session_state['menu_mode'] = "Knowledge Graph"
@@ -205,7 +205,7 @@ if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = 
 if 'search_history' not in st.session_state: st.session_state['search_history'] = []
 if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
 
-# [물리 엔진 값 저장소] 초기값이 없으면 기본값 세팅
+# [물방울 효과 설정값 저장]
 if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
 if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
 if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
@@ -314,7 +314,7 @@ else:
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
             # ----------------------------------------------------
-            # [수정] 우측 상단 물방울 효과 제어 패널 (세션 상태와 연동)
+            # [설정 패널] session_state 값과 양방향 연동
             # ----------------------------------------------------
             ctrl_col1, ctrl_col2 = st.columns([8, 2])
             
@@ -322,19 +322,16 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    # [1] 값을 변경하면 session_state에 바로 저장
-                    def update_physics():
-                        # 콜백 함수: 값이 바뀔 때마다 실행됨 (자동 저장)
-                        pass
+                    # [핵심] value 파라미터에 session_state 값을 넣어줘서
+                    # 페이지를 다시 로드해도 마지막 값을 기억하게 함
+                    def dummy(): pass # 값 변경 시 리런을 유도하기 위한 더미 함수
 
-                    # [2] 위젯과 session_state 연결 (key 파라미터 사용)
-                    # 이렇게 하면 페이지를 이동해도 key에 해당하는 session_state 값이 유지됨
-                    p_active = st.checkbox("💧 물방울 모드", key="phy_active", on_change=update_physics)
+                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=dummy)
                     st.divider()
-                    p_damping = st.slider("점성", 0.1, 1.0, 0.9, 0.05, key="phy_damping", on_change=update_physics)
-                    p_repulsion = st.slider("척력", -2000, -100, -1000, 100, key="phy_repulsion", on_change=update_physics)
-                    p_len = st.slider("간격", 50, 400, 200, 10, key="phy_len", on_change=update_physics)
-                    p_overlap = st.checkbox("겹침 방지", key="phy_overlap", on_change=update_physics)
+                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=dummy)
+                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=dummy)
+                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=dummy)
+                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=dummy)
 
             ag_nodes = []
             final_edges = []
@@ -365,7 +362,7 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ----------------------------------------------------
-            # [NEW] Config 생성 및 물리 엔진 설정 (세션 값 사용)
+            # [적용] Config에 세션 값 주입
             # ----------------------------------------------------
             cfg = Config(
                 width="100%", 
@@ -378,7 +375,6 @@ else:
                 backgroundColor="#000000"
             )
             
-            # [핵심] session_state에 저장된 값들을 불러와서 적용
             cfg.physics = {
                 "enabled": True,
                 "solver": "forceAtlas2Based",
@@ -392,7 +388,6 @@ else:
                     "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0
                 },
                 "stabilization": {
-                    # 체크박스가 켜져 있으면(True) stabilization은 꺼야 함(False) -> 계속 움직임
                     "enabled": not st.session_state['phy_active'], 
                     "iterations": 1000
                 }
