@@ -149,7 +149,6 @@ def ai_process(text):
 # ==========================================
 # 4. UI STYLE & LAYOUT
 # ==========================================
-# [설정] 아이콘 파일 에러 방지를 위해 이모지 사용
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
 st.markdown("""
@@ -191,7 +190,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 헤더 (이미지 제거하고 깔끔한 텍스트로 복구)
+# 헤더
 st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -332,25 +331,26 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # [핵심] 물리학 설정: '물방울' 느낌 + 정지 가능
+            # [핵심 수정] 물리 엔진 정밀 튜닝 (겹침 방지 + 물방울 효과)
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={
-                    "enabled": True, 
-                    "solver": "forceAtlas2Based", # 유기적인 움직임에 최적화된 솔버
+                    "enabled": True,
+                    "solver": "forceAtlas2Based", # 유기적인 배치에 유리한 솔버
                     "forceAtlas2Based": {
-                        "gravitationalConstant": -50, # 척력: 서로 밀어냄
-                        "centralGravity": 0.01,       # 중력: 화면 밖으로 안 나가게 살짝 당김
-                        "springConstant": 0.08,       # 인력: 연결된 노드끼리 당김
-                        "springLength": 100,
-                        "damping": 0.4,               # 점성: 물속처럼 묵직하게 (이게 핵심!)
-                        "avoidOverlap": 0
+                        "theta": 0.5,
+                        "gravitationalConstant": -100,  # [겹침 방지] 서로 밀어내는 힘을 강하게 (-50 -> -100)
+                        "centralGravity": 0.002,        # [펼침] 중앙으로 당기는 힘을 최소화 (0.01 -> 0.002)
+                        "springLength": 200,            # [간격 확보] 연결선 길이를 넉넉하게 (100 -> 200)
+                        "springConstant": 0.05,         # [물방울] 스프링을 느슨하게 하여 부드럽게 (0.08 -> 0.05)
+                        "damping": 0.9,                 # [점성] 물속 저항감을 높임 (0.4 -> 0.9) - 드래그 시 묵직함
+                        "avoidOverlap": 1               # [충돌 방지] 겹침 방지 기능을 최대로 켬
                     },
                     "stabilization": {
-                        "enabled": True,  # [중요] 계산 후 정지함 (False로 하면 계속 움직임)
-                        "iterations": 200 # 200번 계산 후 멈춤
+                        "enabled": True,                # [정지] 계산 후 움직임 멈춤 (사용자가 건드릴 때만 움직임)
+                        "iterations": 1000              # 충분한 계산으로 자리 잡기
                     }
                 },
                 node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
