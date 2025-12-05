@@ -25,8 +25,11 @@ def get_db_connection():
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
+        
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
+        
         return client.open_by_key(sheet_id).sheet1
+        
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
@@ -70,11 +73,20 @@ def add_node(label, group, summary, keywords):
         if not sheet:
             st.error("❌ Google Sheets 연결 실패")
             return None
+
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
+        
         sheet.append_row([new_id, label, group, summary, kw_str])
-        return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords}
+        
+        return {
+            "id": new_id, 
+            "label": label, 
+            "group": group, 
+            "summary": summary, 
+            "keywords": keywords
+        }
     except Exception as e:
         st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
         return None
@@ -108,10 +120,14 @@ def delete_node(node_id):
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
+
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
+    
+    model_name = 'gemini-2.0-flash'
+    
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel(model_name)
         prompt = f"""
         Analyze the text.
         1. Summarize in Korean (max 2 sentences).
@@ -122,8 +138,12 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
+    
     except Exception as e:
-        return {"success": False, "error": f"AI Error: {str(e)}"}
+        err_msg = str(e)
+        if "429" in err_msg or "Quota" in err_msg:
+            return {"success": False, "error": "⚠️ 구글 AI 사용량 초과 (1~2분 뒤 다시 시도해주세요)."}
+        return {"success": False, "error": f"AI Error: {err_msg}"}
 
 # ==========================================
 # 4. UI STYLE & LAYOUT
@@ -132,16 +152,36 @@ st.set_page_config(layout="wide", page_title="My Knowledge Center", page_icon="�
 
 st.markdown("""
 <style>
+    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
-    iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
-    div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important; }
+    
+    /* [2] IFRAME 강제 블랙 (PC 흰색 문제 해결) */
+    iframe { 
+        background-color: #000000 !important; 
+        color-scheme: dark !important; 
+        border: 1px solid #444 !important;
+        border-radius: 12px; 
+    }
+    
+    .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+
+    div[data-testid="column"] button { 
+        background: transparent !important; border: none !important; color: #ccc !important; 
+        text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
+    }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
+    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
+    
+    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
+    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
+    
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -183,10 +223,18 @@ if not st.session_state['logged_in']:
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
+            
             if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if "login" in st.secrets and uid == st.secrets["login"]["id"] and upw == st.secrets["login"]["pw"]:
-                    st.session_state['logged_in'] = True; st.rerun()
-                else: st.error("Check ID/PW")
+                if "login" in st.secrets:
+                    secret_id = st.secrets["login"]["id"]
+                    secret_pw = st.secrets["login"]["pw"]
+                    if uid == secret_id and upw == secret_pw:
+                        st.session_state['logged_in'] = True
+                        st.rerun()
+                    else:
+                        st.error("Check ID/PW")
+                else:
+                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
 else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -210,6 +258,7 @@ else:
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
         default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
         selected = st.multiselect("Search", options=options, default=default_val, max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
                 st.session_state['selected_keyword'] = selected[0]
@@ -252,6 +301,7 @@ else:
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
+                    
                     clr, fclr, bw, sc = base_color, "white", 2, base_color
                     
                     if sel_kw:
@@ -272,25 +322,31 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ==========================================
-            # 💧 [REVERT TO DEFAULT + MINOR TWEAK]
+            # 💧 [FINAL FIXED] DEFAULT + ANTI-OVERLAP
             # ==========================================
-            # 설명:
-            # 1. 아까 'Default'가 작동했던 이유는 복잡한 설정 없이 라이브러리 기본값(barnesHut)을 썼기 때문입니다.
-            # 2. 이번에는 그 'Default' 상태에서 딱 하나, Stabilization(미리 계산해서 멈추는 기능)만 껐습니다.
-            # 3. Solver를 명시하지 않으면 자동으로 가장 호환성 좋은 barnesHut이 작동하며, 물방울 효과가 살아납니다.
+            # 1. solver: "barnesHut" (기본값) 사용 -> 테스트에서 검증됨
+            # 2. stabilization: False -> 켜는 순간 움직임(애니메이션)이 사라짐. 반드시 꺼야 함.
+            # 3. avoidOverlap: 1 (barnesHut 내부 옵션) -> 노드 겹침 완전 방지
             
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 
-                # [Physics]
-                # 복잡한 설정 다 뺍니다. 오직 '안정화(멈춤)' 기능만 끕니다.
-                # 이렇게 하면 Default의 탄성을 유지하면서 로딩 과정을 보여주기 때문에 '물방울' 느낌이 납니다.
                 physics={
                     "enabled": True,
-                    "stabilization": False,  # 이것만 끄면 꿀렁거리는 움직임을 볼 수 있습니다.
-                    "minVelocity": 0.75      # 기본값 유지
+                    "solver": "barnesHut", 
+                    "barnesHut": {
+                        "gravitationalConstant": -3000, # 강한 척력 (서로 밀어냄)
+                        "centralGravity": 0.3,
+                        "springLength": 150,            # 길이 확보
+                        "springConstant": 0.05,
+                        "damping": 0.09,
+                        "avoidOverlap": 1               # [핵심] 노드 겹침 방지 (0~1 사이 값, 1이 최대)
+                    },
+                    "stabilization": {
+                        "enabled": False,               # [핵심] False여야 로딩 시 출렁거리는 효과가 보임
+                    }
                 },
                 
                 node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
