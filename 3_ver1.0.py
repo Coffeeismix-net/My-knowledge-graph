@@ -25,8 +25,12 @@ def get_db_connection():
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
+        
+        # [ID로 직접 연결]
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
+        
         return client.open_by_key(sheet_id).sheet1
+        
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
@@ -70,11 +74,20 @@ def add_node(label, group, summary, keywords):
         if not sheet:
             st.error("❌ Google Sheets 연결 실패")
             return None
+
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
+        
         sheet.append_row([new_id, label, group, summary, kw_str])
-        return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords}
+        
+        return {
+            "id": new_id, 
+            "label": label, 
+            "group": group, 
+            "summary": summary, 
+            "keywords": keywords
+        }
     except Exception as e:
         st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
         return None
@@ -108,10 +121,14 @@ def delete_node(node_id):
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
+
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
+    
+    model_name = 'gemini-2.0-flash'
+    
     try:
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel(model_name)
         prompt = f"""
         Analyze the text.
         1. Summarize in Korean (max 2 sentences).
@@ -122,21 +139,27 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
+    
     except Exception as e:
-        return {"success": False, "error": f"AI Error: {str(e)}"}
+        err_msg = str(e)
+        if "429" in err_msg or "Quota" in err_msg:
+            return {"success": False, "error": "⚠️ 구글 AI 사용량 초과 (1~2분 뒤 다시 시도해주세요)."}
+        return {"success": False, "error": f"AI Error: {err_msg}"}
 
 # ==========================================
 # 4. UI STYLE & LAYOUT
 # ==========================================
-st.set_page_config(layout="wide", page_title="My Knowledge Center", page_icon="🧠")
+# [설정] 아이콘 파일 에러 방지를 위해 이모지 사용
+st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
 st.markdown("""
 <style>
+    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* iframe 강제 스타일링: PC에서 흰 배경 뜨는 것 방지 */
+    /* [2] IFRAME 강제 블랙 (PC/모바일 공통) */
     iframe { 
         background-color: #000000 !important; 
         color-scheme: dark !important; 
@@ -144,18 +167,33 @@ st.markdown("""
         border-radius: 12px; 
     }
     
-    div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important; }
+    .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+
+    div[data-testid="column"] button { 
+        background: transparent !important; border: none !important; color: #ccc !important; 
+        text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
+    }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
+    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
+    
+    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
+    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
+    
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     .col-left { justify-content: flex-start; width: 100%; display: flex; padding-left: 12px; }
 </style>
 """, unsafe_allow_html=True)
+
+# 헤더 (이미지 제거하고 깔끔한 텍스트로 복구)
+st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
 
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'menu_mode' not in st.session_state: st.session_state['menu_mode'] = "Knowledge Graph"
@@ -187,14 +225,21 @@ def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['las
 if not st.session_state['logged_in']:
     _, c, _ = st.columns([1,1,1])
     with c:
-        st.markdown("<br><br><h1 style='text-align: center;'>🧠 My Knowledge Center</h1>", unsafe_allow_html=True)
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
+            
             if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if "login" in st.secrets and uid == st.secrets["login"]["id"] and upw == st.secrets["login"]["pw"]:
-                    st.session_state['logged_in'] = True; st.rerun()
-                else: st.error("Check ID/PW")
+                if "login" in st.secrets:
+                    secret_id = st.secrets["login"]["id"]
+                    secret_pw = st.secrets["login"]["pw"]
+                    if uid == secret_id and upw == secret_pw:
+                        st.session_state['logged_in'] = True
+                        st.rerun()
+                    else:
+                        st.error("Check ID/PW")
+                else:
+                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
 else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -210,7 +255,7 @@ else:
         for i in range(len(df)):
             for j in range(i+1, len(df)):
                 if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
-                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#444"))
+                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
     with left:
@@ -218,6 +263,7 @@ else:
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
         default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
         selected = st.multiselect("Search", options=options, default=default_val, max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
                 st.session_state['selected_keyword'] = selected[0]
@@ -231,6 +277,11 @@ else:
         c1.markdown("### 🔑 Keywords")
         if c2.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
         st.markdown("<hr style='margin:5px 0; border-color:#333;'>", unsafe_allow_html=True)
+        
+        h_cols = st.columns([0.8, 3, 1.2])
+        h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
+        h_cols[1].markdown("<div class='list-header-row col-left'>Keyword</div>", unsafe_allow_html=True)
+        h_cols[2].markdown("<div class='list-header-row col-center'>Cnt</div>", unsafe_allow_html=True)
         
         with st.container(height=650):
             if not kw_counts.empty:
@@ -260,7 +311,9 @@ else:
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
-                    clr, fclr, bw, sc = base_color, "white", 2, base_color
+                    
+                    # [글자색 확인] 배경이 검정이므로 글자는 '흰색'
+                    clr, fclr, bw, sc = base_color, "white", 1, base_color
                     
                     if sel_kw:
                         if sel_kw in r['keywords']: 
@@ -279,35 +332,29 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # ==========================================
-            # 💧 [CONFIG: PURE PHYSICS]
-            # ==========================================
-            # 1. solver: "barnesHut" (기본값)
-            # 2. stabilization: False (로딩 시 움직임 애니메이션 필수)
-            # 3. minVelocity: 제거 (자연스럽게 멈출 때까지 계산)
-            # 4. avoidOverlap: 1 (노드 겹침 절대 방지)
-            
+            # [핵심] 물리학 설정: '물방울' 느낌 + 정지 가능
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False, 
                 physics={
-                    "enabled": True,
-                    "solver": "barnesHut",
-                    "barnesHut": {
-                        "gravitationalConstant": -2000, 
-                        "centralGravity": 0.3,
-                        "springLength": 95,
-                        "springConstant": 0.04,
-                        "damping": 0.09,
-                        "avoidOverlap": 1  # 겹침 방지 (0~1)
+                    "enabled": True, 
+                    "solver": "forceAtlas2Based", # 유기적인 움직임에 최적화된 솔버
+                    "forceAtlas2Based": {
+                        "gravitationalConstant": -50, # 척력: 서로 밀어냄
+                        "centralGravity": 0.01,       # 중력: 화면 밖으로 안 나가게 살짝 당김
+                        "springConstant": 0.08,       # 인력: 연결된 노드끼리 당김
+                        "springLength": 100,
+                        "damping": 0.4,               # 점성: 물속처럼 묵직하게 (이게 핵심!)
+                        "avoidOverlap": 0
                     },
                     "stabilization": {
-                        "enabled": False,  # 로딩 애니메이션 (중요)
+                        "enabled": True,  # [중요] 계산 후 정지함 (False로 하면 계속 움직임)
+                        "iterations": 200 # 200번 계산 후 멈춤
                     }
                 },
                 node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                backgroundColor="#000000"
+                backgroundColor="#000000" 
             )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
@@ -318,6 +365,7 @@ else:
                 wc1, wc2 = st.columns([8, 2])
                 wc1.markdown("#### 📑 Active Nodes (Edit Mode)")
                 if wc2.button("🧹 Clear All", use_container_width=True): clear_ws(); st.rerun()
+                
                 w_cols = st.columns(3) 
                 for idx, n in enumerate(wsn):
                     with w_cols[idx % 3]:
@@ -325,6 +373,7 @@ else:
                             nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
+                            
                             if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
                             if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
                             if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
@@ -338,20 +387,42 @@ else:
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
-                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
+                            st.session_state['temp_analysis'] = { 
+                                "title": ti, 
+                                "content": co, 
+                                "summary": res.get('summary',''), 
+                                "keywords": res.get('keywords',''), 
+                                "success": res['success'], 
+                                "error": res.get('error','') 
+                            }
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.error(f"{tmp['error']}")
-                else: st.success("Analysis Complete!")
+                if not tmp['success']: 
+                    st.error(f"{tmp['error']}")
+                else: 
+                    st.success("Analysis Complete!")
+                
                 st.markdown(f"**Title:** {tmp['title']}")
                 n_sum = st.text_area("Summary", value=tmp['summary'])
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
+                
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
-                    new_node_data = add_node(tmp['title'], final_keywords[0] if final_keywords else "General", n_sum, final_keywords)
+                    group_name = final_keywords[0] if final_keywords else "General"
+                    
+                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
+                    
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
                         st.session_state['temp_analysis'] = None
-                        st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
+                        st.success("Saved!")
+                        time.sleep(1)
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다.")
+
+                if st.button("Cancel", use_container_width=True): 
+                    st.session_state['temp_analysis'] = None
+                    st.rerun()
