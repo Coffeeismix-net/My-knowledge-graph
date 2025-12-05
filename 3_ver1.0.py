@@ -26,9 +26,7 @@ def get_db_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        # [ID로 직접 연결]
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
-        
         return client.open_by_key(sheet_id).sheet1
         
     except Exception as e:
@@ -74,20 +72,11 @@ def add_node(label, group, summary, keywords):
         if not sheet:
             st.error("❌ Google Sheets 연결 실패")
             return None
-
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        
         sheet.append_row([new_id, label, group, summary, kw_str])
-        
-        return {
-            "id": new_id, 
-            "label": label, 
-            "group": group, 
-            "summary": summary, 
-            "keywords": keywords
-        }
+        return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords}
     except Exception as e:
         st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
         return None
@@ -121,14 +110,10 @@ def delete_node(node_id):
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
-
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    
-    model_name = 'gemini-2.0-flash'
-    
     try:
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel('gemini-2.0-flash')
         prompt = f"""
         Analyze the text.
         1. Summarize in Korean (max 2 sentences).
@@ -139,12 +124,8 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
-    
     except Exception as e:
-        err_msg = str(e)
-        if "429" in err_msg or "Quota" in err_msg:
-            return {"success": False, "error": "⚠️ 구글 AI 사용량 초과 (1~2분 뒤 다시 시도해주세요)."}
-        return {"success": False, "error": f"AI Error: {err_msg}"}
+        return {"success": False, "error": f"AI Error: {str(e)}"}
 
 # ==========================================
 # 4. UI STYLE & LAYOUT
@@ -153,36 +134,16 @@ st.set_page_config(layout="wide", page_title="My Knowledge Center", page_icon="�
 
 st.markdown("""
 <style>
-    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
-    
-    /* [2] IFRAME 강제 블랙 (PC 흰색 문제 해결) */
-    iframe { 
-        background-color: #000000 !important; 
-        color-scheme: dark !important; 
-        border: 1px solid #444 !important;
-        border-radius: 12px; 
-    }
-    
-    .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
-
-    div[data-testid="column"] button { 
-        background: transparent !important; border: none !important; color: #ccc !important; 
-        text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
-    }
+    iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
+    div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important; }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
-    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
-    
-    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
-    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
-    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -224,23 +185,13 @@ if not st.session_state['logged_in']:
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
-            
             if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if "login" in st.secrets:
-                    secret_id = st.secrets["login"]["id"]
-                    secret_pw = st.secrets["login"]["pw"]
-                    if uid == secret_id and upw == secret_pw:
-                        st.session_state['logged_in'] = True
-                        st.rerun()
-                    else:
-                        st.error("Check ID/PW")
-                else:
-                    st.error("⚠️ Secrets에 [login] 설정이 없습니다.")
+                if "login" in st.secrets and uid == st.secrets["login"]["id"] and upw == st.secrets["login"]["pw"]:
+                    st.session_state['logged_in'] = True; st.rerun()
+                else: st.error("Check ID/PW")
 else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
-    
-    # [데이터 준비]
     node_degree, edges, kw_counts = {}, [], pd.DataFrame()
     if not df.empty:
         df['id'] = df['id'].astype(str)
@@ -253,7 +204,6 @@ else:
         for i in range(len(df)):
             for j in range(i+1, len(df)):
                 if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
-                    # 연결선도 어둡게 처리
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#444"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
@@ -262,7 +212,6 @@ else:
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
         default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
         selected = st.multiselect("Search", options=options, default=default_val, max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
-        
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
                 st.session_state['selected_keyword'] = selected[0]
@@ -304,9 +253,7 @@ else:
                 for _, r in df.iterrows():
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
-                    sz = min(20 + d*5, 60) # 노드 기본 크기
-                    
-                    # [스타일] 라벨 색상은 흰색 고정
+                    sz = min(20 + d*5, 60)
                     clr, fclr, bw, sc = base_color, "white", 2, base_color
                     
                     if sel_kw:
@@ -315,13 +262,12 @@ else:
                         else: 
                             clr, fclr, sz, bw, sc = "#222", "#444", 15, 1, "#333"
                     
-                    # [핵심 변경] agraph 노드 설정
                     ag_nodes.append(Node(
                         id=r['id'], 
                         label=r['label'], 
                         size=sz, 
                         color=clr, 
-                        font={'color': fclr, 'size': 16, 'face': 'arial'}, # 라벨 복구
+                        font={'color': fclr, 'size': 16, 'face': 'arial'},
                         borderWidth=bw, 
                         borderColor=sc
                     ))
@@ -336,62 +282,58 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ==========================================
-            # 🌊 WATER FLOATING CONFIGURATION
+            # 💧 WATER DROPLET CONFIGURATION (생동감 설정)
             # ==========================================
-            # agraph의 물리 엔진을 해킹하여 "멈추지 않고(Floating) 움직이게" 설정합니다.
             cfg = Config(
                 width="100%", 
                 height=600, 
                 directed=False,
                 
-                # [1] 물리 엔진 활성화
                 physics={
                     "enabled": True,
-                    "solver": "forceAtlas2Based", # 부드러운 중력 모델
+                    # [1] solver: 'forceAtlas2Based'가 가장 자연스러운(Organic) 움직임을 만듭니다.
+                    "solver": "forceAtlas2Based", 
+                    
                     "forceAtlas2Based": {
                         "theta": 0.5,
-                        "gravitationalConstant": -50, # 적당한 척력
-                        "centralGravity": 0.005,      # 중앙으로 살짝 당김
+                        "gravitationalConstant": -50, # 노드 간 척력
+                        "centralGravity": 0.01,
                         "springLength": 100,
-                        "springConstant": 0.08,
-                        "damping": 0.4                # 관성 유지 (0에 가까울수록 계속 움직임)
+                        "springConstant": 0.08, # [중요] 값을 낮춰서(0.08) 스프링을 헐렁하게 -> 찰랑거리는 느낌
+                        "damping": 0.4,         # [중요] 관성 유지 (0에 가까울수록 물속처럼 미끄러짐, 1은 꿀처럼 끈적임)
+                        "avoidOverlap": 1       # 물방울처럼 겹치지 않게
                     },
-                    # [핵심] 안정화(멈춤) 기능을 꺼서 계속 유영하게 만듦
+                    
+                    # [2] Stabilization: True -> 초기 로딩 후에는 멈춥니다. (영원히 움직이지 않음)
+                    # 하지만 위에서 설정한 damping/springConstant 덕분에
+                    # 드래그하여 놓았을 때 바로 멈추지 않고 물방울처럼 출렁이다 멈춥니다.
                     "stabilization": {
-                        "enabled": False, 
-                        "iterations": 1000
+                        "enabled": True,
+                        "iterations": 1000, 
+                        "updateInterval": 25
                     },
-                    "minVelocity": 0.75 # 속도가 줄어도 강제로 미세하게 움직이게 함
+                    "minVelocity": 0.75 
                 },
                 
-                # [2] 노드/라벨 렌더링
                 node={
                     'labelProperty': 'label', 
                     'renderLabel': True, 
                     'font': {'color': 'white', 'strokeWidth': 0}
                 },
-                
-                # [3] 배경색 (리얼 블랙)
                 backgroundColor="#000000"
             )
             
-            # [4] agraph 렌더링 (클릭 이벤트 수신 가능!)
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
             
-            # 클릭 시 액션
             if sel and sel != st.session_state['last_selection']: 
-                st.session_state['last_selection'] = sel
-                add_ws(sel)
-                st.rerun()
+                st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
 
-            # [Workspace: 편집 모드]
             wsn = st.session_state['workspace_nodes']
             if wsn:
                 st.markdown("---")
                 wc1, wc2 = st.columns([8, 2])
                 wc1.markdown("#### 📑 Active Nodes (Edit Mode)")
                 if wc2.button("🧹 Clear All", use_container_width=True): clear_ws(); st.rerun()
-                
                 w_cols = st.columns(3) 
                 for idx, n in enumerate(wsn):
                     with w_cols[idx % 3]:
@@ -399,7 +341,6 @@ else:
                             nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
-                            
                             if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
                             if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
                             if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
@@ -413,42 +354,20 @@ else:
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
-                            st.session_state['temp_analysis'] = { 
-                                "title": ti, 
-                                "content": co, 
-                                "summary": res.get('summary',''), 
-                                "keywords": res.get('keywords',''), 
-                                "success": res['success'], 
-                                "error": res.get('error','') 
-                            }
+                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: 
-                    st.error(f"{tmp['error']}")
-                else: 
-                    st.success("Analysis Complete!")
-                
+                if not tmp['success']: st.error(f"{tmp['error']}")
+                else: st.success("Analysis Complete!")
                 st.markdown(f"**Title:** {tmp['title']}")
                 n_sum = st.text_area("Summary", value=tmp['summary'])
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
-                    group_name = final_keywords[0] if final_keywords else "General"
-                    
-                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
-                    
+                    new_node_data = add_node(tmp['title'], final_keywords[0] if final_keywords else "General", n_sum, final_keywords)
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
                         st.session_state['temp_analysis'] = None
-                        st.success("Saved!")
-                        time.sleep(1)
-                        st.session_state['menu_mode'] = "Knowledge Graph"
-                        st.rerun()
-                    else:
-                        st.error("저장 중 오류가 발생했습니다.")
-
-                if st.button("Cancel", use_container_width=True): 
-                    st.session_state['temp_analysis'] = None
-                    st.rerun()
+                        st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
