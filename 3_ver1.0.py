@@ -171,4 +171,258 @@ st.markdown("""
     .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
 
     div[data-testid="column"] button { 
-        background: transparent !important; border: none !important; color:
+        background: transparent !important; border: none !important; color: #ccc !important; 
+        text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
+    }
+    div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
+    
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
+    
+    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
+    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
+    
+    div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
+    div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
+    div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    
+    .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
+    .list-content-row { display: flex; align-items: center; height: 46px; }
+    .col-center { justify-content: center; width: 100%; display: flex; }
+    .col-left { justify-content: flex-start; width: 100%; display: flex; padding-left: 12px; }
+</style>
+""", unsafe_allow_html=True)
+
+# 헤더 복구
+st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+
+if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+if 'menu_mode' not in st.session_state: st.session_state['menu_mode'] = "Knowledge Graph"
+if 'workspace_nodes' not in st.session_state: st.session_state['workspace_nodes'] = []
+if 'selected_keyword' not in st.session_state: st.session_state['selected_keyword'] = None
+if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = None
+if 'search_history' not in st.session_state: st.session_state['search_history'] = []
+if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
+
+if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
+    st.session_state['nodes_db'] = load_nodes()
+
+def add_ws(node_id):
+    tid = str(node_id)
+    if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
+        tgt = next((n for n in st.session_state['nodes_db'] if str(n['id']) == tid), None)
+        if tgt: st.session_state['workspace_nodes'].append(tgt)
+def close_ws(nid): st.session_state['workspace_nodes'] = [n for n in st.session_state['workspace_nodes'] if str(n['id']) != str(nid)]
+def clear_ws(): st.session_state['workspace_nodes'] = []
+def update_act(nid, label, summary, kw_str):
+    k_list = [k.strip() for k in kw_str.split(',')]
+    update_node(nid, label, summary, k_list)
+    for n in st.session_state['workspace_nodes']:
+        if str(n['id']) == str(nid):
+            n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
+    st.success("Updated!"); time.sleep(0.5); st.rerun()
+def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['last_selection'] = None; st.rerun()
+
+if not st.session_state['logged_in']:
+    _, c, _ = st.columns([1,1,1])
+    with c:
+        with st.form("login"):
+            st.markdown("### User Login")
+            uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
+            
+            if st.form_submit_button("Login", type="primary", use_container_width=True):
+                if "login" in st.secrets:
+                    secret_id = st.secrets["login"]["id"]
+                    secret_pw = st.secrets["login"]["pw"]
+                    if uid == secret_id and upw == secret_pw:
+                        st.session_state['logged_in'] = True
+                        st.rerun()
+                    else:
+                        st.error("Check ID/PW")
+                else:
+                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
+else:
+    left, main = st.columns([1.5, 4.5])
+    df = pd.DataFrame(st.session_state['nodes_db'])
+    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
+    if not df.empty:
+        df['id'] = df['id'].astype(str)
+        all_kw = []
+        for ks in df['keywords']: all_kw.extend(ks)
+        if all_kw:
+            kw_counts = pd.Series(all_kw).value_counts().reset_index()
+            kw_counts.columns = ['keyword', 'count']
+        node_degree = {r['id']:0 for _,r in df.iterrows()}
+        for i in range(len(df)):
+            for j in range(i+1, len(df)):
+                if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
+                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
+                    node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
+
+    with left:
+        all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
+        options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
+        default_val = [st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else []
+        selected = st.multiselect("Search", options=options, default=default_val, max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        
+        if selected:
+            if selected[0] != st.session_state['selected_keyword']:
+                st.session_state['selected_keyword'] = selected[0]
+                if selected[0] in st.session_state['search_history']: st.session_state['search_history'].remove(selected[0])
+                st.session_state['search_history'].insert(0, selected[0])
+                st.rerun()
+        else:
+            if st.session_state['selected_keyword']: st.session_state['selected_keyword'] = None; st.rerun()
+
+        c1, c2 = st.columns([2, 1])
+        c1.markdown("### 🔑 Keywords")
+        if c2.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
+        st.markdown("<hr style='margin:5px 0; border-color:#333;'>", unsafe_allow_html=True)
+        
+        h_cols = st.columns([0.8, 3, 1.2])
+        h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
+        h_cols[1].markdown("<div class='list-header-row col-left'>Keyword</div>", unsafe_allow_html=True)
+        h_cols[2].markdown("<div class='list-header-row col-center'>Cnt</div>", unsafe_allow_html=True)
+        
+        with st.container(height=650):
+            if not kw_counts.empty:
+                for i, row in enumerate(kw_counts.itertuples(), 1):
+                    kw = row.keyword
+                    act = "#00ADB5" if kw == st.session_state['selected_keyword'] else "#fff"
+                    rc = st.columns([0.8, 3, 1.2])
+                    rc[0].markdown(f"<div class='list-content-row col-center' style='color:{act}'>{i}</div>", unsafe_allow_html=True)
+                    if rc[1].button(kw, key=f"kbtn_{i}", use_container_width=True): st.session_state['selected_keyword'] = None if st.session_state['selected_keyword'] == kw else kw; st.rerun()
+                    rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
+
+    with main:
+        m1, m2, m3, m4, m5 = st.columns([5, 1, 1, 1, 1])
+        m1.markdown("### 🌌 Knowledge Universe")
+        if m2.button("Graph"): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+        if m3.button("Add"): st.session_state['menu_mode'] = "Add Data"; st.rerun()
+        if m4.button("Set"): st.session_state['menu_mode'] = "Settings"; st.rerun()
+        if m5.button("Out"): st.session_state['logged_in'] = False; st.rerun()
+
+        if st.session_state['menu_mode'] == "Knowledge Graph":
+            ag_nodes = []
+            final_edges = []
+            sel_kw = st.session_state['selected_keyword']
+            if not df.empty:
+                for _, r in df.iterrows():
+                    base_color = get_group_color(r['group'])
+                    d = node_degree.get(r['id'], 0)
+                    sz = min(20 + d*5, 60)
+                    
+                    # [글자색 확인] 배경이 검정이므로 글자는 '흰색'
+                    clr, fclr, bw, sc = base_color, "white", 1, base_color
+                    
+                    if sel_kw:
+                        if sel_kw in r['keywords']: 
+                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
+                        else: 
+                            clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
+                    
+                    ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
+            
+                for e in edges:
+                    e_w, e_c = 1, "#555"
+                    if sel_kw:
+                        src = df[df['id'] == e.source].iloc[0]
+                        tgt = df[df['id'] == e.to].iloc[0]
+                        if sel_kw in src['keywords'] and sel_kw in tgt['keywords']: e_w, e_c = 4, "#00FF00"
+                        else: e_c = "#222"
+                    final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
+
+            # [수정] agraph 라이브러리 사용 + 물멍 느낌(forceAtlas2Based) 적용
+            cfg = Config(
+                width="100%", 
+                height=600, 
+                directed=False, 
+                # 여기서 움직임을 조절합니다
+                physics={
+                    "enabled": True,
+                    "solver": "forceAtlas2Based", # 유기적인 움직임에 적합한 솔버
+                    "forceAtlas2Based": {
+                        "theta": 0.5,
+                        "gravitationalConstant": -50, # 서로 적당히 밀어냄
+                        "centralGravity": 0.01,       # 가운데로 아주 약하게 당김 (둥둥 뜨게)
+                        "springConstant": 0.08,
+                        "springLength": 100,
+                        "damping": 0.4,               # 관성 유지 (물속 느낌)
+                        "avoidOverlap": 0
+                    },
+                    "stabilization": {"enabled": True, "iterations": 200}
+                },
+                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
+                backgroundColor="#000000" 
+            )
+            
+            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
+            if sel and sel != st.session_state['last_selection']: st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
+
+            wsn = st.session_state['workspace_nodes']
+            if wsn:
+                wc1, wc2 = st.columns([8, 2])
+                wc1.markdown("#### 📑 Active Nodes (Edit Mode)")
+                if wc2.button("🧹 Clear All", use_container_width=True): clear_ws(); st.rerun()
+                
+                w_cols = st.columns(3) 
+                for idx, n in enumerate(wsn):
+                    with w_cols[idx % 3]:
+                        with st.container(border=True):
+                            nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
+                            nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
+                            ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
+                            
+                            if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
+                            if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
+                            if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
+
+        elif st.session_state['menu_mode'] == "Add Data":
+            st.info("AI Auto-Analysis Node Creator")
+            if not st.session_state['temp_analysis']:
+                ti = st.text_input("Title")
+                co = st.text_area("Content", height=200)
+                if st.button("🔍 AI Analyze", type="primary"):
+                    if ti and co:
+                        with st.spinner("Thinking..."):
+                            res = ai_process(co)
+                            st.session_state['temp_analysis'] = { 
+                                "title": ti, 
+                                "content": co, 
+                                "summary": res.get('summary',''), 
+                                "keywords": res.get('keywords',''), 
+                                "success": res['success'], 
+                                "error": res.get('error','') 
+                            }
+                            st.rerun()
+            else:
+                tmp = st.session_state['temp_analysis']
+                if not tmp['success']: 
+                    st.error(f"{tmp['error']}")
+                else: 
+                    st.success("Analysis Complete!")
+                
+                st.markdown(f"**Title:** {tmp['title']}")
+                n_sum = st.text_area("Summary", value=tmp['summary'])
+                n_kw = st.text_input("Keywords", value=tmp['keywords'])
+                
+                if st.button("💾 Save", type="primary", use_container_width=True):
+                    final_keywords = [k.strip() for k in n_kw.split(',')]
+                    group_name = final_keywords[0] if final_keywords else "General"
+                    
+                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
+                    
+                    if new_node_data:
+                        st.session_state['nodes_db'].append(new_node_data)
+                        st.session_state['temp_analysis'] = None
+                        st.success("Saved!")
+                        time.sleep(1)
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다.")
+
+                if st.button("Cancel", use_container_width=True): 
+                    st.session_state['temp_analysis'] = None
+                    st.rerun()
