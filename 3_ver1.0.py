@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components # HTML 컴포넌트용 (그래프 시각화 변경)
+import streamlit.components.v1 as components # HTML 컴포넌트용
 import time
 import google.generativeai as genai
 import json
@@ -9,7 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 0. GOOGLE SHEETS CONNECTION (기존 동일)
+# 0. GOOGLE SHEETS CONNECTION
 # ==========================================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -36,7 +36,7 @@ def get_db_connection():
         return None
 
 # ==========================================
-# 1. HELPER: Dynamic Color (기존 동일)
+# 1. HELPER: Dynamic Color
 # ==========================================
 FIXED_COLORS = { 
     "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", 
@@ -50,7 +50,7 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 # ==========================================
-# 2. DATABASE OPERATIONS (기존 동일)
+# 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
     sheet = get_db_connection()
@@ -116,7 +116,7 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE (기존 동일)
+# 3. AI ENGINE
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
@@ -153,23 +153,21 @@ def render_organic_graph(nodes_data, selected_keyword=None):
     """
     물방울처럼 유영하는 유기적 그래프를 렌더링하는 HTML/JS 생성 함수
     """
-    # [데이터 준비] Python List -> JSON 변환
     nodes_json = []
     edges_json = []
     
     # 1. 노드 생성
     for n in nodes_data:
         color = get_group_color(n['group'])
-        val = 10 # 기본 크기
+        val = 10 
         
-        # 키워드 검색 시 하이라이트 처리
         is_highlight = False
         if selected_keyword and selected_keyword in n['keywords']:
             is_highlight = True
-            color = "#00FF00" # 하이라이트 색상 (형광 초록)
+            color = "#00FF00" 
             val = 20
         elif selected_keyword:
-            color = "#333333" # 비활성 노드는 어둡게
+            color = "#333333" 
 
         nodes_json.append({
             "id": n['id'], 
@@ -180,7 +178,7 @@ def render_organic_graph(nodes_data, selected_keyword=None):
             "is_highlight": is_highlight
         })
 
-    # 2. 엣지 생성 (키워드 공유 시 연결)
+    # 2. 엣지 생성
     for i in range(len(nodes_data)):
         for j in range(i+1, len(nodes_data)):
             src = nodes_data[i]
@@ -188,10 +186,10 @@ def render_organic_graph(nodes_data, selected_keyword=None):
             common = set(src['keywords']) & set(tgt['keywords'])
             if common:
                 width = 1
-                color = "#444444" # 기본 엣지 색상
+                color = "#444444"
                 if selected_keyword and selected_keyword in common:
                     width = 3
-                    color = "#00FF00" # 하이라이트 엣지
+                    color = "#00FF00"
                 
                 edges_json.append({
                     "source": src['id'], 
@@ -202,7 +200,7 @@ def render_organic_graph(nodes_data, selected_keyword=None):
 
     data_json = json.dumps({"nodes": nodes_json, "links": edges_json})
 
-    # [프론트엔드] HTML + JS 템플릿 (Force-Graph 라이브러리)
+    # [프론트엔드] HTML + JS 템플릿
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -221,41 +219,33 @@ def render_organic_graph(nodes_data, selected_keyword=None):
         const Graph = ForceGraph()
           (document.getElementById('graph'))
             .graphData(gData)
-            .backgroundColor('#000000') // 배경 리얼 블랙
+            .backgroundColor('#000000') 
             .nodeId('id')
             .nodeVal('val')
             .nodeLabel('name')
             .nodeColor('color')
             .linkColor('color')
             .linkWidth('width')
+            .d3VelocityDecay(0.6)  // 점성 (물멍 효과)
+            .d3AlphaDecay(0)       // 영원한 움직임
             
-            // ---------------------------------------------
-            // [물리 엔진 튜닝] "물멍" 효과 구현 파트
-            // ---------------------------------------------
-            .d3VelocityDecay(0.6)  // (1) 점성: 높을수록 물속처럼 묵직하게 움직임 (기본 0.4 -> 0.6)
-            .d3AlphaDecay(0)       // (2) 감쇠 제거: 에너지가 줄어들지 않도록 설정
-            
-            // 노드 그리기 (Canvas API)
             .nodeCanvasObject((node, ctx, globalScale) => {{
               const label = node.name;
               const fontSize = 12/globalScale;
               ctx.font = `${{fontSize}}px Sans-Serif`;
               
-              // 노드 원
               const r = Math.sqrt(node.val) * 4;
               ctx.beginPath();
               ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
               ctx.fillStyle = node.color;
               ctx.fill();
               
-              // 하이라이트 테두리
               if (node.is_highlight) {{
                   ctx.strokeStyle = '#FFFFFF';
                   ctx.lineWidth = 2 / globalScale;
                   ctx.stroke();
               }}
 
-              // 텍스트 라벨
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillStyle = '#FFFFFF';
@@ -265,32 +255,27 @@ def render_organic_graph(nodes_data, selected_keyword=None):
                 document.getElementById('graph').style.cursor = node ? 'pointer' : null;
             }});
 
-        // ---------------------------------------------
-        // [영원한 유영] 초기 안정화 후 부유 모드 진입
-        // ---------------------------------------------
-        Graph.d3Force('charge').strength(-150); // 서로 밀어내는 힘
-        Graph.d3Force('link').distance(100);    // 연결 거리
+        Graph.d3Force('charge').strength(-150);
+        Graph.d3Force('link').distance(100);
         
-        // 시작 1초 후, 목표 에너지(alphaTarget)를 미세하게 주어 계속 움직이게 함
         setTimeout(() => {{
             Graph.d3Force('charge').strength(-100); 
-            Graph.d3AlphaTarget(0.01); // (3) 멈추지 않는 미세한 움직임
+            Graph.d3AlphaTarget(0.01); // 부유 모드
         }}, 1000);
 
       </script>
     </body>
     </html>
     """
-    # Streamlit 화면에 렌더링
     components.html(html_code, height=600, scrolling=False)
 
 
 # ==========================================
-# 5. UI STYLE & LAYOUT (메인 앱 시작)
+# 5. UI STYLE & LAYOUT
 # ==========================================
-st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="node_icon.png")
+# [수정] 아이콘 파일 대신 이모지 사용
+st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
-# CSS: 배경 블랙 강제
 st.markdown("""
 <style>
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
@@ -300,13 +285,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 헤더 (아이콘 + 제목)
-st.markdown("<br>", unsafe_allow_html=True)
-_, center_col, _ = st.columns([1, 2, 1]) 
-with center_col:
-    c1, c2 = st.columns([0.2, 0.8]) 
-    with c1: st.image("node_icon.png", width=60)
-    with c2: st.markdown("<h1 style='padding-top: 10px; margin: 0;'>나만의 지식 센터</h1>", unsafe_allow_html=True)
+# [수정] 이미지 파일 로딩 부분 제거 -> 깔끔한 제목만 표시
+st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # 세션 초기화
@@ -353,14 +333,12 @@ else:
         kw_counts = pd.Series(all_kw).value_counts().reset_index()
         kw_counts.columns = ['keyword', 'count']
         
-        # 검색창
         options = kw_counts['keyword'].tolist()
         selected = st.multiselect("Keyword", options=options, default=([st.session_state['selected_keyword']] if st.session_state['selected_keyword'] else []), max_selections=1)
         
         if selected: st.session_state['selected_keyword'] = selected[0]
         else: st.session_state['selected_keyword'] = None
 
-        # 키워드 리스트
         st.markdown("---")
         with st.container(height=500):
             for row in kw_counts.itertuples():
@@ -376,19 +354,18 @@ else:
 
     # [오른쪽] 메인 콘텐츠
     with main:
-        # 상단 메뉴바
         m1, m2, m3, m4 = st.columns([6, 1, 1, 1])
         m1.markdown("### 🌌 Knowledge Universe")
         if m2.button("Graph"): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
         if m3.button("Add"): st.session_state['menu_mode'] = "Add Data"; st.rerun()
         if m4.button("Out"): st.session_state['logged_in'] = False; st.rerun()
 
-        # 1. 그래프 뷰 (Organic Mode 적용)
+        # 1. 그래프 뷰 (Organic Mode)
         if st.session_state['menu_mode'] == "Knowledge Graph":
             render_organic_graph(st.session_state['nodes_db'], st.session_state['selected_keyword'])
             st.info("💡 팁: 노드들은 물속에 떠 있는 것처럼 천천히 움직입니다. 마우스로 드래그하여 던져보세요!")
 
-        # 2. 데이터 추가 뷰 (기존 로직)
+        # 2. 데이터 추가 뷰
         elif st.session_state['menu_mode'] == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
