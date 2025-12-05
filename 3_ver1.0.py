@@ -9,6 +9,21 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
+# 4. UI STYLE & LAYOUT (설정값 유지를 위해 맨 위로 배치)
+# ==========================================
+st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
+
+# ----------------------------------------------------
+# [핵심 수정] 물리 엔진 설정값 영구 보존 (초기화 방지)
+# ----------------------------------------------------
+# 앱이 실행될 때 한 번만 기본값을 잡고, 이후엔 절대 건드리지 않음
+if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
+if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
+if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
+if 'phy_len' not in st.session_state: st.session_state['phy_len'] = 200
+if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = True
+
+# ==========================================
 # 0. GOOGLE SHEETS CONNECTION
 # ==========================================
 SCOPES = [
@@ -26,11 +41,8 @@ def get_db_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        # [ID로 직접 연결]
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
-        
         return client.open_by_key(sheet_id).sheet1
-        
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
@@ -74,19 +86,13 @@ def add_node(label, group, summary, keywords):
         if not sheet:
             st.error("❌ Google Sheets 연결 실패")
             return None
-
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        
         sheet.append_row([new_id, label, group, summary, kw_str])
-        
         return {
-            "id": new_id, 
-            "label": label, 
-            "group": group, 
-            "summary": summary, 
-            "keywords": keywords
+            "id": new_id, "label": label, "group": group, 
+            "summary": summary, "keywords": keywords
         }
     except Exception as e:
         st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
@@ -121,12 +127,9 @@ def delete_node(node_id):
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
-
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    
     model_name = 'gemini-2.0-flash'
-    
     try:
         model = genai.GenerativeModel(model_name)
         prompt = f"""
@@ -139,7 +142,6 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
-    
     except Exception as e:
         err_msg = str(e)
         if "429" in err_msg or "Quota" in err_msg:
@@ -147,42 +149,31 @@ def ai_process(text):
         return {"success": False, "error": f"AI Error: {err_msg}"}
 
 # ==========================================
-# 4. UI STYLE & LAYOUT
+# MAIN APP UI
 # ==========================================
-st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
-
 st.markdown("""
 <style>
-    /* [1] 앱 전체 배경: 리얼 블랙 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
-    
-    /* [2] IFRAME 강제 블랙 */
     iframe { 
         background-color: #000000 !important; 
         color-scheme: dark !important; 
         border: 1px solid #444 !important;
         border-radius: 12px; 
     }
-    
     .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
-
     div[data-testid="column"] button { 
         background: transparent !important; border: none !important; color: #ccc !important; 
         text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
     }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
-    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
-    
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
-    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -190,13 +181,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 헤더
 st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ----------------------------------------------------
-# [설정 저장소] 초기값 세팅 (한 번만 실행됨)
-# ----------------------------------------------------
+# 세션 초기화
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'menu_mode' not in st.session_state: st.session_state['menu_mode'] = "Knowledge Graph"
 if 'workspace_nodes' not in st.session_state: st.session_state['workspace_nodes'] = []
@@ -204,13 +192,6 @@ if 'selected_keyword' not in st.session_state: st.session_state['selected_keywor
 if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = None
 if 'search_history' not in st.session_state: st.session_state['search_history'] = []
 if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
-
-# [물방울 효과 설정값 저장]
-if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
-if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
-if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
-if 'phy_len' not in st.session_state: st.session_state['phy_len'] = 200
-if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = True
 
 if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
@@ -237,7 +218,6 @@ if not st.session_state['logged_in']:
         with st.form("login"):
             st.markdown("### User Login")
             uid = st.text_input("ID"); upw = st.text_input("PW", type="password")
-            
             if st.form_submit_button("Login", type="primary", use_container_width=True):
                 if "login" in st.secrets:
                     secret_id = st.secrets["login"]["id"]
@@ -245,10 +225,8 @@ if not st.session_state['logged_in']:
                     if uid == secret_id and upw == secret_pw:
                         st.session_state['logged_in'] = True
                         st.rerun()
-                    else:
-                        st.error("Check ID/PW")
-                else:
-                    st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
+                    else: st.error("Check ID/PW")
+                else: st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
 else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -314,7 +292,7 @@ else:
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
             # ----------------------------------------------------
-            # [설정 패널] session_state 값과 양방향 연동
+            # [수정] 우측 상단 물방울 효과 제어 패널 (값 유지 로직)
             # ----------------------------------------------------
             ctrl_col1, ctrl_col2 = st.columns([8, 2])
             
@@ -322,16 +300,20 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    # [핵심] value 파라미터에 session_state 값을 넣어줘서
-                    # 페이지를 다시 로드해도 마지막 값을 기억하게 함
-                    def dummy(): pass # 값 변경 시 리런을 유도하기 위한 더미 함수
-
-                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=dummy)
+                    # [1] 위젯의 값을 변수에 받음 (저장된 session state값으로 초기화)
+                    val_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'])
                     st.divider()
-                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=dummy)
-                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=dummy)
-                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=dummy)
-                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=dummy)
+                    val_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05)
+                    val_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100)
+                    val_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10)
+                    val_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'])
+
+                    # [2] 변경된 값을 즉시 session state에 강제 저장 (다음 페이지 로드 때 쓰기 위함)
+                    st.session_state['phy_active'] = val_active
+                    st.session_state['phy_damping'] = val_damping
+                    st.session_state['phy_repulsion'] = val_repulsion
+                    st.session_state['phy_len'] = val_len
+                    st.session_state['phy_overlap'] = val_overlap
 
             ag_nodes = []
             final_edges = []
@@ -341,9 +323,7 @@ else:
                     base_color = get_group_color(r['group'])
                     d = node_degree.get(r['id'], 0)
                     sz = min(20 + d*5, 60)
-                    
                     clr, fclr, bw, sc = base_color, "white", 1, base_color
-                    
                     if sel_kw:
                         if sel_kw in r['keywords']: 
                             clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
@@ -362,7 +342,7 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ----------------------------------------------------
-            # [적용] Config에 세션 값 주입
+            # [적용] Config에 저장된 값 주입
             # ----------------------------------------------------
             cfg = Config(
                 width="100%", 
@@ -388,6 +368,7 @@ else:
                     "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0
                 },
                 "stabilization": {
+                    # 체크박스가 켜져 있으면(True) stabilization은 꺼야 함(False) -> 계속 움직임
                     "enabled": not st.session_state['phy_active'], 
                     "iterations": 1000
                 }
