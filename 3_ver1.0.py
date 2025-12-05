@@ -1,7 +1,6 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
-from streamlit_agraph import Edge # 데이터 처리용으로만 남김
+from streamlit_agraph import agraph, Node, Edge, Config
 import time
 import google.generativeai as genai
 import json
@@ -148,109 +147,7 @@ def ai_process(text):
         return {"success": False, "error": f"AI Error: {err_msg}"}
 
 # ==========================================
-# 4. CUSTOM HTML COMPONENT (FLOATING GRAPH)
-# ==========================================
-def render_floating_graph(nodes_data, edges_data, height=600):
-    """
-    Force-Graph 라이브러리를 사용해 '물속 유영' 효과를 내는 HTML을 생성합니다.
-    """
-    # Python 데이터를 JSON 문자열로 변환
-    graph_data = {
-        "nodes": nodes_data,
-        "links": edges_data
-    }
-    json_data = json.dumps(graph_data)
-
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style> 
-        body {{ margin: 0; background-color: #000000; overflow: hidden; }} 
-        .graph-tooltip {{ 
-            background: rgba(0,0,0,0.8) !important; 
-            color: #fff !important; 
-            border: 1px solid #444 !important;
-            border-radius: 4px;
-            padding: 5px;
-        }}
-      </style>
-      <script src="//unpkg.com/force-graph"></script>
-    </head>
-    <body>
-      <div id="graph"></div>
-      <script>
-        const gData = {json_data};
-
-        // [핵심] 물멍 효과를 위한 물리 엔진 설정
-        const Graph = ForceGraph()
-          (document.getElementById('graph'))
-          .graphData(gData)
-          .backgroundColor('#000000')
-          .nodeId('id')
-          .nodeLabel('label')
-          .nodeColor(node => node.color)
-          .nodeVal(node => node.size) // 노드 크기 반영
-          
-          // [1] 물리 엔진 튜닝: 점성 및 유동성
-          .d3VelocityDecay(0.6)     // 0.6: 물속 저항처럼 묵직하게 (기본값 0.4)
-          .d3AlphaTarget(0.05)      // 0.05: 멈추지 않고 계속 미세하게 움직임 (0이면 멈춤)
-          
-          // [2] 힘(Force) 설정: 척력과 연결
-          .d3Force('charge', d3.forceManyBody().strength(-100)) // 서로 밀어내는 힘
-          .d3Force('link', d3.forceLink().id(d => d.id).distance(70)) // 링크 길이
-          
-          // [3] 시각적 설정
-          .linkColor(link => link.color)
-          .linkWidth(link => link.width)
-          .nodeCanvasObject((node, ctx, globalScale) => {{
-            const label = node.label;
-            const fontSize = 12/globalScale;
-            ctx.font = `${{fontSize}}px Sans-Serif`;
-            const textWidth = ctx.measureText(label).width;
-            const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2); 
-
-            // 노드 원 그리기
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, node.size/4, 0, 2 * Math.PI, false);
-            ctx.fillStyle = node.color;
-            ctx.fill();
-            
-            // 선택된 노드 테두리 효과 (옵션)
-            if (node.is_selected) {{
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#fff';
-                ctx.stroke();
-            }}
-
-            // 텍스트 라벨 그리기
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = node.textColor || 'rgba(255, 255, 255, 0.8)';
-            ctx.fillText(label, node.x, node.y + node.size/4 + fontSize + 2);
-            
-            node.__bckgDimensions = bckgDimensions; // for interaction
-          }})
-          .onNodeClick(node => {{
-            // Streamlit으로 데이터 전송은 현재 iframe 제약으로 어려움.
-            // 대신 시각적으로 강조하거나 툴팁으로 확인.
-            Graph.centerAt(node.x, node.y, 1000);
-            Graph.zoom(4, 2000);
-          }});
-          
-          // 화면 리사이즈 대응
-          window.addEventListener('resize', () => {{
-            Graph.width(window.innerWidth);
-            Graph.height(window.innerHeight);
-          }});
-      </script>
-    </body>
-    </html>
-    """
-    return html_code
-
-# ==========================================
-# 5. UI STYLE & LAYOUT
+# 4. UI STYLE & LAYOUT
 # ==========================================
 st.set_page_config(layout="wide", page_title="My Knowledge Center", page_icon="🧠")
 
@@ -261,12 +158,16 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] IFRAME 강제 블랙 */
+    /* [2] IFRAME 강제 블랙 (PC 흰색 문제 해결) */
     iframe { 
         background-color: #000000 !important; 
+        color-scheme: dark !important; 
         border: 1px solid #444 !important;
         border-radius: 12px; 
     }
+    
+    .node-card { background-color: #111; border: 1px solid #444; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+
     div[data-testid="column"] button { 
         background: transparent !important; border: none !important; color: #ccc !important; 
         text-align: left !important; padding: 0 !important; margin: 0 !important; font-size: 0.95rem !important;
@@ -274,6 +175,9 @@ st.markdown("""
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
     
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
+    
+    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
+    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
@@ -292,19 +196,16 @@ if 'workspace_nodes' not in st.session_state: st.session_state['workspace_nodes'
 if 'selected_keyword' not in st.session_state: st.session_state['selected_keyword'] = None
 if 'temp_analysis' not in st.session_state: st.session_state['temp_analysis'] = None
 if 'search_history' not in st.session_state: st.session_state['search_history'] = []
-# force-graph는 iframe 내부 state이므로 Streamlit 세션 연동은 단방향(Py->JS) 위주로 구성합니다.
+if 'last_selection' not in st.session_state: st.session_state['last_selection'] = None
 
 if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
 
 def add_ws(node_id):
-    # force-graph는 클릭 이벤트를 Python으로 직접 보내기 까다로우므로
-    # 필요하다면 검색이나 별도 리스트에서 선택하여 Workspace에 추가하는 방식을 사용
     tid = str(node_id)
     if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
         tgt = next((n for n in st.session_state['nodes_db'] if str(n['id']) == tid), None)
         if tgt: st.session_state['workspace_nodes'].append(tgt)
-
 def close_ws(nid): st.session_state['workspace_nodes'] = [n for n in st.session_state['workspace_nodes'] if str(n['id']) != str(nid)]
 def clear_ws(): st.session_state['workspace_nodes'] = []
 def update_act(nid, label, summary, kw_str):
@@ -314,7 +215,7 @@ def update_act(nid, label, summary, kw_str):
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
     st.success("Updated!"); time.sleep(0.5); st.rerun()
-def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.rerun()
+def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['last_selection'] = None; st.rerun()
 
 if not st.session_state['logged_in']:
     _, c, _ = st.columns([1,1,1])
@@ -339,10 +240,8 @@ else:
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
     
-    # [데이터 전처리: edges 계산]
-    edges_list = []
-    kw_counts = pd.DataFrame()
-    
+    # [데이터 준비]
+    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
     if not df.empty:
         df['id'] = df['id'].astype(str)
         all_kw = []
@@ -350,19 +249,13 @@ else:
         if all_kw:
             kw_counts = pd.Series(all_kw).value_counts().reset_index()
             kw_counts.columns = ['keyword', 'count']
-        
-        # 간단한 엣지 생성 로직 (키워드 공유 시 연결)
+        node_degree = {r['id']:0 for _,r in df.iterrows()}
         for i in range(len(df)):
             for j in range(i+1, len(df)):
-                common = set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords'])
-                if common:
-                    # width 가중치
-                    edges_list.append({
-                        "source": df.iloc[i]['id'], 
-                        "target": df.iloc[j]['id'], 
-                        "color": "#333",
-                        "width": 1
-                    })
+                if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
+                    # 연결선도 어둡게 처리
+                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#444"))
+                    node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
     with left:
         all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
@@ -384,7 +277,6 @@ else:
         if c2.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
         st.markdown("<hr style='margin:5px 0; border-color:#333;'>", unsafe_allow_html=True)
         
-        # 키워드 리스트
         with st.container(height=650):
             if not kw_counts.empty:
                 for i, row in enumerate(kw_counts.itertuples(), 1):
@@ -404,78 +296,95 @@ else:
         if m4.button("Set"): st.session_state['menu_mode'] = "Settings"; st.rerun()
         if m5.button("Out"): st.session_state['logged_in'] = False; st.rerun()
 
-        # ==========================================
-        # 🌊 WATER FLOATING GRAPH MODE
-        # ==========================================
         if st.session_state['menu_mode'] == "Knowledge Graph":
-            
-            # 1. 데이터 준비 (Force-Graph용 JSON 구조)
-            fg_nodes = []
-            fg_edges = []
+            ag_nodes = []
+            final_edges = []
             sel_kw = st.session_state['selected_keyword']
-            
-            # 노드 데이터 변환
             if not df.empty:
                 for _, r in df.iterrows():
                     base_color = get_group_color(r['group'])
+                    d = node_degree.get(r['id'], 0)
+                    sz = min(20 + d*5, 60) # 노드 기본 크기
                     
-                    # 기본 스타일
-                    size = 10
-                    color = base_color
-                    text_color = "rgba(255,255,255,0.6)"
-                    is_selected = False
-
-                    # 키워드 선택 시 하이라이트
+                    # [스타일] 라벨 색상은 흰색 고정
+                    clr, fclr, bw, sc = base_color, "white", 2, base_color
+                    
                     if sel_kw:
-                        if sel_kw in r['keywords']:
-                            size = 20
-                            color = "#00FF00" # 네온 그린
-                            text_color = "#FFFFFF"
-                            is_selected = True
-                            # 선택된 노드는 workspace에 자동 추가 로직을 원한다면 여기 추가
-                            add_ws(r['id']) 
-                        else:
-                            color = "#333" # 비활성 노드는 어둡게
-                            text_color = "#444"
+                        if sel_kw in r['keywords']: 
+                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.3, "#FFFFFF", 4, "#FFFFFF"
+                        else: 
+                            clr, fclr, sz, bw, sc = "#222", "#444", 15, 1, "#333"
                     
-                    fg_nodes.append({
-                        "id": str(r['id']),
-                        "label": r['label'],
-                        "group": r['group'],
-                        "size": size,
-                        "color": color,
-                        "textColor": text_color,
-                        "is_selected": is_selected
-                    })
-
-            # 엣지 데이터 변환
-            for e in edges_list:
-                width = 1
-                color = "#444"
-                
-                if sel_kw:
-                    # 선택된 키워드를 포함하는 노드끼리의 연결만 강조
-                    src_kw = df[df['id'] == e['source']].iloc[0]['keywords']
-                    tgt_kw = df[df['id'] == e['target']].iloc[0]['keywords']
-                    
-                    if sel_kw in src_kw and sel_kw in tgt_kw:
-                        width = 3
-                        color = "#00FF00"
-                    else:
-                        color = "#222" # 매우 어둡게
-
-                fg_edges.append({
-                    "source": str(e['source']),
-                    "target": str(e['target']),
-                    "color": color,
-                    "width": width
-                })
+                    # [핵심 변경] agraph 노드 설정
+                    ag_nodes.append(Node(
+                        id=r['id'], 
+                        label=r['label'], 
+                        size=sz, 
+                        color=clr, 
+                        font={'color': fclr, 'size': 16, 'face': 'arial'}, # 라벨 복구
+                        borderWidth=bw, 
+                        borderColor=sc
+                    ))
             
-            # 2. HTML 생성 및 렌더링
-            html_content = render_floating_graph(fg_nodes, fg_edges, height=650)
-            components.html(html_content, height=650, scrolling=False)
+                for e in edges:
+                    e_w, e_c = 1, "#444"
+                    if sel_kw:
+                        src = df[df['id'] == e.source].iloc[0]
+                        tgt = df[df['id'] == e.to].iloc[0]
+                        if sel_kw in src['keywords'] and sel_kw in tgt['keywords']: e_w, e_c = 3, "#00FF00"
+                        else: e_c = "#222"
+                    final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # 3. Workspace (편집창)
+            # ==========================================
+            # 🌊 WATER FLOATING CONFIGURATION
+            # ==========================================
+            # agraph의 물리 엔진을 해킹하여 "멈추지 않고(Floating) 움직이게" 설정합니다.
+            cfg = Config(
+                width="100%", 
+                height=600, 
+                directed=False,
+                
+                # [1] 물리 엔진 활성화
+                physics={
+                    "enabled": True,
+                    "solver": "forceAtlas2Based", # 부드러운 중력 모델
+                    "forceAtlas2Based": {
+                        "theta": 0.5,
+                        "gravitationalConstant": -50, # 적당한 척력
+                        "centralGravity": 0.005,      # 중앙으로 살짝 당김
+                        "springLength": 100,
+                        "springConstant": 0.08,
+                        "damping": 0.4                # 관성 유지 (0에 가까울수록 계속 움직임)
+                    },
+                    # [핵심] 안정화(멈춤) 기능을 꺼서 계속 유영하게 만듦
+                    "stabilization": {
+                        "enabled": False, 
+                        "iterations": 1000
+                    },
+                    "minVelocity": 0.75 # 속도가 줄어도 강제로 미세하게 움직이게 함
+                },
+                
+                # [2] 노드/라벨 렌더링
+                node={
+                    'labelProperty': 'label', 
+                    'renderLabel': True, 
+                    'font': {'color': 'white', 'strokeWidth': 0}
+                },
+                
+                # [3] 배경색 (리얼 블랙)
+                backgroundColor="#000000"
+            )
+            
+            # [4] agraph 렌더링 (클릭 이벤트 수신 가능!)
+            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
+            
+            # 클릭 시 액션
+            if sel and sel != st.session_state['last_selection']: 
+                st.session_state['last_selection'] = sel
+                add_ws(sel)
+                st.rerun()
+
+            # [Workspace: 편집 모드]
             wsn = st.session_state['workspace_nodes']
             if wsn:
                 st.markdown("---")
