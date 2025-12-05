@@ -282,7 +282,7 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             # ==========================================
-            # 💧 WATER DROPLET CONFIGURATION (생동감 설정)
+            # 💧 REAL WATER DROPLET EFFECT (핵심 수정)
             # ==========================================
             cfg = Config(
                 width="100%", 
@@ -291,28 +291,27 @@ else:
                 
                 physics={
                     "enabled": True,
-                    # [1] solver: 'forceAtlas2Based'가 가장 자연스러운(Organic) 움직임을 만듭니다.
-                    "solver": "forceAtlas2Based", 
+                    "solver": "forceAtlas2Based",
                     
+                    # [1] 물방울 물리값 (Tweak)
                     "forceAtlas2Based": {
-                        "theta": 0.5,
-                        "gravitationalConstant": -50, # 노드 간 척력
-                        "centralGravity": 0.01,
+                        "gravitationalConstant": -100, # 노드 사이 척력 (서로 밀어냄)
+                        "centralGravity": 0.005,       # 중앙으로 아주 약하게 당김 (둥실거림 유도)
                         "springLength": 100,
-                        "springConstant": 0.08, # [중요] 값을 낮춰서(0.08) 스프링을 헐렁하게 -> 찰랑거리는 느낌
-                        "damping": 0.4,         # [중요] 관성 유지 (0에 가까울수록 물속처럼 미끄러짐, 1은 꿀처럼 끈적임)
-                        "avoidOverlap": 1       # 물방울처럼 겹치지 않게
+                        "springConstant": 0.05,        # [중요] 스프링을 매우 느슨하게 -> 젤리 같은 느낌
+                        "damping": 0.2,                # [중요] 0.2로 낮춤 -> 관성이 유지되어 오래 흔들림 (0.4는 너무 뻑뻑함)
+                        "avoidOverlap": 1
                     },
                     
-                    # [2] Stabilization: True -> 초기 로딩 후에는 멈춥니다. (영원히 움직이지 않음)
-                    # 하지만 위에서 설정한 damping/springConstant 덕분에
-                    # 드래그하여 놓았을 때 바로 멈추지 않고 물방울처럼 출렁이다 멈춥니다.
+                    # [2] 초기화 시 움직임 허용 (Stabilization: OFF)
+                    # False로 해야 처음 로딩될 때 노드들이 꼬물꼬물 자리를 잡는 게 보입니다.
                     "stabilization": {
-                        "enabled": True,
-                        "iterations": 1000, 
-                        "updateInterval": 25
+                        "enabled": False, 
                     },
-                    "minVelocity": 0.75 
+                    
+                    # [3] 무한 움직임 방지 (Stop Condition)
+                    # 계속 움직이는 건 싫다고 하셨으니, 속도가 0.1 이하로 떨어지면 멈추게 합니다.
+                    "minVelocity": 0.1 
                 },
                 
                 node={
