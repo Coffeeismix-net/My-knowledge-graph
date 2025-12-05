@@ -2,47 +2,73 @@ import streamlit as st
 from streamlit_agraph import agraph, Node, Edge, Config
 import random
 
-st.set_page_config(layout="wide", page_title="Physics Test V4", page_icon="🧪")
+st.set_page_config(layout="wide", page_title="Physics Tuning", page_icon="🧪")
 
-st.markdown("### 🧪 물리 엔진 실험실 V4")
-st.info("이제 그래프가 멈추지 않고 계속 움직입니다. 슬라이더를 조절해 보세요.")
+# 1. 화면 구성
+st.title("🧪 물리 엔진 튜닝 실험실")
+st.info("좌측 사이드바의 값을 조절하면 그래프가 실시간으로 반응합니다.")
 
-# ==========================================
-# 1. 사이드바 설정 (범위 수정)
-# ==========================================
-st.sidebar.header("설정 조절")
+# 2. 사이드바 설정 (여기가 핵심 컨트롤러)
+st.sidebar.header("⚙️ 물리 엔진 설정")
 
-# [1] 점성 (Damping): 물 vs 공기
-# 0.9 이상이면 물속처럼 아주 묵직해집니다.
-damping = st.sidebar.slider("1. 점성 (Damping/묵직함)", 0.1, 1.0, 0.9, 0.05)
+# [A] Solver 선택 (움직임의 방식 결정)
+# forceAtlas2Based: 유기적이고 부드러움 (물방울 느낌 추천)
+# barnesHut: 기본값, 빠르고 안정적
+solver_type = st.sidebar.selectbox("알고리즘 (Solver)", ["forceAtlas2Based", "barnesHut"], index=0)
 
-# [2] 척력 (Repulsion): 서로 밀어내는 힘
-# -500보다 더 낮추면(-1000) 서로 강하게 밀어내서 겹침이 사라집니다.
-repulsion = st.sidebar.slider("2. 척력 (밀어내는 힘)", -2000, -100, -1000, 100)
+# [B] 물리 변수 조절
+st.sidebar.subheader("🌊 물방울 느낌 조절")
 
-# [3] 연결선 길이 (Length)
-spring_len = st.sidebar.slider("3. 노드 간격 (길이)", 50, 400, 200, 10)
+# 1. 점성 (Damping): 높을수록 꿀물처럼 끈적하게 움직임
+damping = st.sidebar.slider("점성 (Damping)", 0.0, 1.0, 0.90, 0.01, help="1.0에 가까울수록 저항이 커져 묵직하게 움직입니다.")
 
-# [4] 겹침 방지
-overlap = st.sidebar.checkbox("4. 겹침 방지 켜기", value=True)
+# 2. 척력 (Gravity Constant): 서로 밀어내는 힘
+# forceAtlas2Based는 값이 크고, barnesHut은 값이 매우 큽니다.
+if solver_type == "forceAtlas2Based":
+    gravity = st.sidebar.slider("척력 (Repulsion)", -200, -10, -50, 10)
+else:
+    gravity = st.sidebar.slider("척력 (Repulsion)", -50000, -1000, -2000, 500)
 
-# ==========================================
-# 2. 데이터 생성
-# ==========================================
+# 3. 스프링 길이 (Spring Length): 노드 간격
+spring_len = st.sidebar.slider("노드 간격 (Spring Length)", 50, 300, 100, 10)
+
+# 4. 겹침 방지 (Avoid Overlap)
+overlap = st.sidebar.checkbox("겹침 방지 (Avoid Overlap)", value=True)
+
+
+# 3. 데이터 생성 (테스트용 랜덤 데이터)
 nodes = []
 edges = []
-nodes.append(Node(id="center", label="Center", size=40, color="#FF0055"))
+nodes.append(Node(id="center", label="Center", size=30, color="#FF0055"))
 
-for i in range(1, 15):
-    nodes.append(Node(id=f"node_{i}", label=f"Node_{i}", size=20, color="#00ADB5"))
+# 노드 15개 생성
+for i in range(1, 16):
+    nodes.append(Node(id=f"node_{i}", label=f"N_{i}", size=random.randint(15, 20), color="#00ADB5"))
     edges.append(Edge(source="center", target=f"node_{i}", color="#555"))
-    # 얽히고 설킨 구조를 만들어 물리 엔진 테스트
+    # 서로 얽히게 연결 추가
     if i % 3 == 0:
         edges.append(Edge(source=f"node_{i}", target=f"node_{i-1}", color="#333"))
 
-# ==========================================
-# 3. 그래프 설정 (움직임 활성화)
-# ==========================================
+
+# 4. 그래프 설정 (Config)
+# 핵심: stabilization을 False로 설정해야 실시간 움직임이 보임!
+physics_options = {
+    "enabled": True,
+    "solver": solver_type,
+    "stabilization": {
+        "enabled": False,  # <--- [매우 중요] 이걸 꺼야 계속 움직입니다!
+    },
+    # 선택한 Solver에 따른 세부 설정
+    solver_type: {
+        "gravitationalConstant": gravity,
+        "centralGravity": 0.01,
+        "springLength": spring_len,
+        "springConstant": 0.08,
+        "damping": damping,
+        "avoidOverlap": 1 if overlap else 0
+    }
+}
+
 config = Config(
     width="100%",
     height=600,
@@ -51,28 +77,9 @@ config = Config(
     highlightColor="#F7A7A6",
     collapsible=False,
     node={'labelProperty': 'label', 'renderLabel': True, 'font': {'color': 'white'}},
-    physics={
-        "enabled": True,
-        "solver": "forceAtlas2Based",
-        "forceAtlas2Based": {
-            "theta": 0.5,
-            "gravitationalConstant": repulsion, # 슬라이더 값
-            "centralGravity": 0.01,
-            "springConstant": 0.08,
-            "springLength": spring_len,         # 슬라이더 값
-            "damping": damping,                 # 슬라이더 값
-            "avoidOverlap": 1 if overlap else 0 # 슬라이더 값
-        },
-        "stabilization": {
-            "enabled": False, # [핵심] 테스트 중에는 끄기! (계속 움직여야 확인 가능)
-            "iterations": 1000
-        }
-    },
+    physics=physics_options, # 위에서 만든 설정 적용
     backgroundColor="#000000"
 )
 
-# ==========================================
-# 4. 렌더링
-# ==========================================
-# key 파라미터 없이 호출 (에러 방지)
+# 5. 그리기
 agraph(nodes=nodes, edges=edges, config=config)
