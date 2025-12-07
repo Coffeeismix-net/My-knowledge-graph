@@ -130,7 +130,7 @@ def ai_process(text):
     genai.configure(api_key=api_key)
     
     # [최종 해결] 라이브러리가 업데이트되었으므로 이제 안정적인 1.5 버전을 씁니다!
-    model_name = 'gemini-1.5-flash' 
+    model_name = 'gemini-flash-latest' 
     
     try:
         model = genai.GenerativeModel(model_name)
@@ -427,3 +427,4 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
