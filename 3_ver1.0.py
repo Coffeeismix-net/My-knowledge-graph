@@ -129,7 +129,7 @@ def ai_process(text):
         return {"success": False, "error": "Secrets Error: API Key Missing"}
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    model_name = 'gemini-2.0-flash'
+    model_name = 'gemini-1.5-flash'
     try:
         model = genai.GenerativeModel(model_name)
         prompt = f"""
@@ -443,3 +443,4 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
