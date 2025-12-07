@@ -1,18 +1,3 @@
-# [긴급 조치] 최신 라이브러리 강제 설치 (404 에러 해결용)
-import os
-import subprocess
-import sys
-
-try:
-    import google.generativeai as genai
-    # 버전이 낮으면 강제로 업그레이드
-    from packaging import version
-    if version.parse(genai.__version__) < version.parse("0.5.2"):
-        raise ImportError
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai>=0.5.2"])
-    import google.generativeai as genai
-
 import streamlit as st
 import pandas as pd
 from streamlit_agraph import agraph, Node, Edge, Config
@@ -22,6 +7,8 @@ import json
 import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
+
+st.toast(f"현재 구글 AI 라이브러리 버전: {genai.__version__}", icon="🤖")
 
 # ==========================================
 # 4. UI STYLE & LAYOUT (설정값 유지를 위해 맨 위로 배치)
@@ -458,5 +445,6 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
 
 
