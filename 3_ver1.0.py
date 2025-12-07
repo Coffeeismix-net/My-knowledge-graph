@@ -8,8 +8,6 @@ import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.toast(f"현재 구글 AI 라이브러리 버전: {genai.__version__}", icon="🤖")
-
 # ==========================================
 # 4. UI STYLE & LAYOUT (설정값 유지를 위해 맨 위로 배치)
 # ==========================================
@@ -18,7 +16,6 @@ st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_ico
 # ----------------------------------------------------
 # [핵심 수정] 물리 엔진 설정값 영구 보존 (초기화 방지)
 # ----------------------------------------------------
-# 앱이 실행될 때 한 번만 기본값을 잡고, 이후엔 절대 건드리지 않음
 if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
 if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
 if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
@@ -124,14 +121,17 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE
+# 3. AI ENGINE (수정됨)
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
         return {"success": False, "error": "Secrets Error: API Key Missing"}
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    model_name = 'gemini-2.0-flash'
+    
+    # [수정 1] 모델 변경: 'gemini-2.0-flash-lite' (안정적, 빠름)
+    model_name = 'gemini-2.0-flash-lite' 
+    
     try:
         model = genai.GenerativeModel(model_name)
         prompt = f"""
@@ -144,11 +144,10 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
+    
     except Exception as e:
-        err_msg = str(e)
-        if "429" in err_msg or "Quota" in err_msg:
-            return {"success": False, "error": "⚠️ 구글 AI 사용량 초과 (1~2분 뒤 다시 시도해주세요)."}
-        return {"success": False, "error": f"AI Error: {err_msg}"}
+        # [수정 2] 진짜 에러 메시지(Raw Error) 그대로 출력 (원인 파악용)
+        return {"success": False, "error": f"🛑 AI Error: {str(e)}"}
 
 # ==========================================
 # MAIN APP UI
@@ -293,29 +292,25 @@ else:
 
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
-            # ----------------------------------------------------
-            # [수정] 우측 상단 물방울 효과 제어 패널 (값 유지 로직)
-            # ----------------------------------------------------
             ctrl_col1, ctrl_col2 = st.columns([8, 2])
-            
             with ctrl_col2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    # [1] 위젯의 값을 변수에 받음 (저장된 session state값으로 초기화)
-                    val_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'])
-                    st.divider()
-                    val_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05)
-                    val_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100)
-                    val_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10)
-                    val_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'])
+                    def dummy(): pass 
 
-                    # [2] 변경된 값을 즉시 session state에 강제 저장 (다음 페이지 로드 때 쓰기 위함)
-                    st.session_state['phy_active'] = val_active
-                    st.session_state['phy_damping'] = val_damping
-                    st.session_state['phy_repulsion'] = val_repulsion
-                    st.session_state['phy_len'] = val_len
-                    st.session_state['phy_overlap'] = val_overlap
+                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=dummy)
+                    st.divider()
+                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=dummy)
+                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=dummy)
+                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=dummy)
+                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=dummy)
+
+                    st.session_state['phy_active'] = p_active
+                    st.session_state['phy_damping'] = p_damping
+                    st.session_state['phy_repulsion'] = p_repulsion
+                    st.session_state['phy_len'] = p_len
+                    st.session_state['phy_overlap'] = p_overlap
 
             ag_nodes = []
             final_edges = []
@@ -331,7 +326,6 @@ else:
                             clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: 
                             clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
-                    
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
                 for e in edges:
@@ -343,9 +337,6 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # ----------------------------------------------------
-            # [적용] Config에 저장된 값 주입
-            # ----------------------------------------------------
             cfg = Config(
                 width="100%", 
                 height=600, 
@@ -370,7 +361,6 @@ else:
                     "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0
                 },
                 "stabilization": {
-                    # 체크박스가 켜져 있으면(True) stabilization은 꺼야 함(False) -> 계속 움직임
                     "enabled": not st.session_state['phy_active'], 
                     "iterations": 1000
                 }
@@ -406,6 +396,7 @@ else:
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
+                            # [수정] 수동 입력이 가능하도록 state 저장 및 재실행
                             st.session_state['temp_analysis'] = { 
                                 "title": ti, 
                                 "content": co, 
@@ -417,8 +408,9 @@ else:
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
+                # [수정] 에러가 있어도 경고만 보여주고, 입력창은 띄워줌
                 if not tmp['success']: 
-                    st.error(f"{tmp['error']}")
+                    st.warning(f"{tmp['error']}") 
                 else: 
                     st.success("Analysis Complete!")
                 
@@ -445,8 +437,3 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
-
-
-
-
-
