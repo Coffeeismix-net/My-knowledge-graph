@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
 # ----------------------------------------------------
-# [핵심 수정] 물리 엔진 설정값 영구 보존 (초기화 방지)
+# [물리 엔진 설정값 초기화] (최초 1회만 실행)
 # ----------------------------------------------------
 if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
 if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
@@ -121,7 +121,7 @@ def delete_node(node_id):
     except: pass
 
 # ==========================================
-# 3. AI ENGINE (수정됨)
+# 3. AI ENGINE
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets or "api_key" not in st.secrets["gemini"]:
@@ -129,7 +129,7 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # [수정 1] 모델 변경: 'gemini-2.0-flash-lite' (안정적, 빠름)
+    # 모델: gemini-2.0-flash-lite 사용
     model_name = 'gemini-2.0-flash-lite' 
     
     try:
@@ -146,7 +146,6 @@ def ai_process(text):
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
     
     except Exception as e:
-        # [수정 2] 진짜 에러 메시지(Raw Error) 그대로 출력 (원인 파악용)
         return {"success": False, "error": f"🛑 AI Error: {str(e)}"}
 
 # ==========================================
@@ -297,20 +296,17 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    def dummy(): pass 
+                    # [수정된 부분]
+                    # key="..." 파라미터만으로도 st.session_state[...] 값이 자동 연동됩니다.
+                    # 따라서 별도의 변수 저장(st.session_state['...'] = val) 코드를 삭제하여 충돌을 막았습니다.
+                    def dummy(): pass # 값 변경 시 리런 유도
 
-                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=dummy)
+                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=dummy)
                     st.divider()
-                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=dummy)
-                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=dummy)
-                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=dummy)
-                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=dummy)
-
-                    st.session_state['phy_active'] = p_active
-                    st.session_state['phy_damping'] = p_damping
-                    st.session_state['phy_repulsion'] = p_repulsion
-                    st.session_state['phy_len'] = p_len
-                    st.session_state['phy_overlap'] = p_overlap
+                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=dummy)
+                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=dummy)
+                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=dummy)
+                    st.checkbox("겹침 방지", key="phy_overlap", on_change=dummy)
 
             ag_nodes = []
             final_edges = []
@@ -396,7 +392,6 @@ else:
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
-                            # [수정] 수동 입력이 가능하도록 state 저장 및 재실행
                             st.session_state['temp_analysis'] = { 
                                 "title": ti, 
                                 "content": co, 
@@ -408,7 +403,6 @@ else:
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                # [수정] 에러가 있어도 경고만 보여주고, 입력창은 띄워줌
                 if not tmp['success']: 
                     st.warning(f"{tmp['error']}") 
                 else: 
