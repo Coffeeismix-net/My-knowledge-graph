@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
 # ----------------------------------------------------
-# [물리 엔진 설정값 초기화] (최초 1회만 실행)
+# [물리 엔진 설정값 초기화]
 # ----------------------------------------------------
 if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
 if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
@@ -129,8 +129,8 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # 모델: gemini-2.0-flash-lite 사용
-    model_name = 'gemini-2.0-flash-lite' 
+    # [최종 해결] 라이브러리가 업데이트되었으므로 이제 안정적인 1.5 버전을 씁니다!
+    model_name = 'gemini-1.5-flash' 
     
     try:
         model = genai.GenerativeModel(model_name)
@@ -144,7 +144,6 @@ def ai_process(text):
         response = model.generate_content(prompt)
         data = json.loads(response.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
-    
     except Exception as e:
         return {"success": False, "error": f"🛑 AI Error: {str(e)}"}
 
@@ -296,10 +295,7 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    # [수정된 부분]
-                    # key="..." 파라미터만으로도 st.session_state[...] 값이 자동 연동됩니다.
-                    # 따라서 별도의 변수 저장(st.session_state['...'] = val) 코드를 삭제하여 충돌을 막았습니다.
-                    def dummy(): pass # 값 변경 시 리런 유도
+                    def dummy(): pass 
 
                     st.checkbox("💧 물방울 모드", key="phy_active", on_change=dummy)
                     st.divider()
