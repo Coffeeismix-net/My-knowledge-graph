@@ -9,18 +9,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 4. UI STYLE & LAYOUT (설정값 유지를 위해 맨 위로 배치)
+# 4. UI STYLE & LAYOUT
 # ==========================================
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
-
-# ----------------------------------------------------
-# [물리 엔진 설정값 초기화]
-# ----------------------------------------------------
-if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
-if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
-if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
-if 'phy_len' not in st.session_state: st.session_state['phy_len'] = 200
-if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = True
 
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
@@ -40,11 +31,74 @@ def get_db_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
-        return client.open_by_key(sheet_id).sheet1
+        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"
+        return client.open_by_key(sheet_id) # 시트 전체(Workbook) 반환
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
+
+# ==========================================
+# [NEW] SETTINGS MANAGER (구글 시트 연동)
+# ==========================================
+def load_settings():
+    """구글 시트 'settings' 탭에서 설정값을 불러옴"""
+    wb = get_db_connection()
+    if not wb: return {}
+    
+    try:
+        # settings 시트가 없으면 생성
+        try:
+            ws = wb.worksheet("settings")
+        except:
+            ws = wb.add_worksheet(title="settings", rows=20, cols=2)
+            ws.append_row(["key", "value"])
+            # 초기값 세팅
+            init_data = [
+                ["phy_active", "True"], ["phy_damping", "0.9"], 
+                ["phy_repulsion", "-1000"], ["phy_len", "200"], ["phy_overlap", "True"]
+            ]
+            for row in init_data: ws.append_row(row)
+            return {k: v for k, v in init_data}
+
+        # 데이터 읽기
+        records = ws.get_all_records()
+        settings = {r['key']: r['value'] for r in records}
+        return settings
+    except:
+        return {}
+
+def save_setting(key, value):
+    """설정값이 바뀔 때마다 구글 시트에 저장"""
+    wb = get_db_connection()
+    if not wb: return
+    try:
+        ws = wb.worksheet("settings")
+        cell = ws.find(key)
+        if cell:
+            ws.update_cell(cell.row, 2, str(value))
+        else:
+            ws.append_row([key, str(value)])
+    except: pass
+
+# ----------------------------------------------------
+# [초기화] 앱 시작 시 구글 시트에서 설정값 로드
+# ----------------------------------------------------
+if 'settings_loaded' not in st.session_state:
+    saved_settings = load_settings()
+    
+    # 저장된 값이 있으면 그거 쓰고, 없으면 기본값
+    def get_val(k, default, type_func):
+        val = saved_settings.get(k, str(default))
+        if type_func == bool: return val.lower() == 'true'
+        return type_func(val)
+
+    st.session_state['phy_active'] = get_val('phy_active', True, bool)
+    st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
+    st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
+    st.session_state['phy_len'] = get_val('phy_len', 200, int)
+    st.session_state['phy_overlap'] = get_val('phy_overlap', True, bool)
+    
+    st.session_state['settings_loaded'] = True
 
 # ==========================================
 # 1. HELPER: Dynamic Color
@@ -64,9 +118,10 @@ def get_group_color(group_name):
 # 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
-    sheet = get_db_connection()
-    if not sheet: return []
+    wb = get_db_connection()
+    if not wb: return []
     try:
+        sheet = wb.sheet1 # 첫 번째 시트가 데이터
         data = sheet.get_all_records()
         nodes = []
         for row in data:
@@ -81,10 +136,9 @@ def load_nodes():
 
 def add_node(label, group, summary, keywords):
     try:
-        sheet = get_db_connection()
-        if not sheet:
-            st.error("❌ Google Sheets 연결 실패")
-            return None
+        wb = get_db_connection()
+        if not wb: return None
+        sheet = wb.sheet1
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
@@ -93,14 +147,13 @@ def add_node(label, group, summary, keywords):
             "id": new_id, "label": label, "group": group, 
             "summary": summary, "keywords": keywords
         }
-    except Exception as e:
-        st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
-        return None
+    except: return None
 
 def update_node(node_id, label, summary, keywords):
-    sheet = get_db_connection()
-    if not sheet: return
+    wb = get_db_connection()
+    if not wb: return
     try:
+        sheet = wb.sheet1
         cell = sheet.find(str(node_id))
         if cell:
             r = cell.row
@@ -113,9 +166,10 @@ def update_node(node_id, label, summary, keywords):
     except: pass
 
 def delete_node(node_id):
-    sheet = get_db_connection()
-    if not sheet: return
+    wb = get_db_connection()
+    if not wb: return
     try:
+        sheet = wb.sheet1
         cell = sheet.find(str(node_id))
         if cell: sheet.delete_rows(cell.row)
     except: pass
@@ -129,7 +183,7 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # [최종 해결] 라이브러리가 업데이트되었으므로 이제 안정적인 1.5 버전을 씁니다!
+    # [수정] 해결된 모델명
     model_name = 'gemini-flash-latest' 
     
     try:
@@ -295,14 +349,17 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    def dummy(): pass 
+                    # [핵심] 콜백 함수에서 구글 시트에 저장
+                    def save_phy(k):
+                        val = st.session_state[k]
+                        save_setting(k, val)
 
-                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=dummy)
+                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=save_phy, args=("phy_active",))
                     st.divider()
-                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=dummy)
-                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=dummy)
-                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=dummy)
-                    st.checkbox("겹침 방지", key="phy_overlap", on_change=dummy)
+                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
+                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
+                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
+                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
 
             ag_nodes = []
             final_edges = []
@@ -427,4 +484,3 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
-
