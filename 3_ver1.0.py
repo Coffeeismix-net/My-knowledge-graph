@@ -8,23 +8,6 @@ import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
 
-try:
-    # secrets에서 키 가져오기
-    if "gemini" in st.secrets and "api_key" in st.secrets["gemini"]:
-        my_key = st.secrets["gemini"]["api_key"]
-        genai.configure(api_key=my_key)
-        
-        st.write("✅ 내 API 키로 사용 가능한 모델 목록:")
-        models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                models.append(m.name)
-        st.code(models) # 화면에 리스트 출력
-    else:
-        st.error("API 키가 Secrets에 없습니다.")
-except Exception as e:
-    st.error(f"목록 조회 실패: {e}")
-
 st.toast(f"현재 구글 AI 라이브러리 버전: {genai.__version__}", icon="🤖")
 
 # ==========================================
@@ -148,7 +131,7 @@ def ai_process(text):
         return {"success": False, "error": "Secrets Error: API Key Missing"}
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
-    model_name = 'gemini-1.5-flash'
+    model_name = 'gemini-2.0-flash'
     try:
         model = genai.GenerativeModel(model_name)
         prompt = f"""
@@ -462,6 +445,7 @@ else:
                 if st.button("Cancel", use_container_width=True): 
                     st.session_state['temp_analysis'] = None
                     st.rerun()
+
 
 
 
