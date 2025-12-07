@@ -32,43 +32,33 @@ def get_db_connection():
         client = gspread.authorize(creds)
         
         sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"
-        return client.open_by_key(sheet_id) # 시트 전체(Workbook) 반환
+        return client.open_by_key(sheet_id) 
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
 
 # ==========================================
-# [NEW] SETTINGS MANAGER (구글 시트 연동)
+# SETTINGS MANAGER (구글 시트 연동)
 # ==========================================
 def load_settings():
-    """구글 시트 'settings' 탭에서 설정값을 불러옴"""
     wb = get_db_connection()
     if not wb: return {}
-    
     try:
-        # settings 시트가 없으면 생성
         try:
             ws = wb.worksheet("settings")
         except:
             ws = wb.add_worksheet(title="settings", rows=20, cols=2)
             ws.append_row(["key", "value"])
-            # 초기값 세팅
-            init_data = [
-                ["phy_active", "True"], ["phy_damping", "0.9"], 
-                ["phy_repulsion", "-1000"], ["phy_len", "200"], ["phy_overlap", "True"]
-            ]
-            for row in init_data: ws.append_row(row)
-            return {k: v for k, v in init_data}
+            return {}
 
-        # 데이터 읽기
         records = ws.get_all_records()
-        settings = {r['key']: r['value'] for r in records}
+        # 빈 값이나 에러 방지를 위해 모두 문자열로 변환하여 읽음
+        settings = {str(r['key']): str(r['value']) for r in records}
         return settings
     except:
         return {}
 
 def save_setting(key, value):
-    """설정값이 바뀔 때마다 구글 시트에 저장"""
     wb = get_db_connection()
     if not wb: return
     try:
@@ -81,16 +71,21 @@ def save_setting(key, value):
     except: pass
 
 # ----------------------------------------------------
-# [초기화] 앱 시작 시 구글 시트에서 설정값 로드
+# [초기화] 앱 시작 시 설정값 로드 (안전장치 추가됨)
 # ----------------------------------------------------
 if 'settings_loaded' not in st.session_state:
     saved_settings = load_settings()
     
-    # 저장된 값이 있으면 그거 쓰고, 없으면 기본값
+    # [수정] 에러가 나도 죽지 않고 기본값을 반환하는 안전한 함수
     def get_val(k, default, type_func):
         val = saved_settings.get(k, str(default))
-        if type_func == bool: return val.lower() == 'true'
-        return type_func(val)
+        try:
+            if type_func == bool:
+                return str(val).strip().lower() == 'true'
+            return type_func(val)
+        except:
+            # 변환 실패 시(빈칸 등) 기본값 사용
+            return default
 
     st.session_state['phy_active'] = get_val('phy_active', True, bool)
     st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
@@ -121,7 +116,7 @@ def load_nodes():
     wb = get_db_connection()
     if not wb: return []
     try:
-        sheet = wb.sheet1 # 첫 번째 시트가 데이터
+        sheet = wb.sheet1
         data = sheet.get_all_records()
         nodes = []
         for row in data:
@@ -183,7 +178,6 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # [수정] 해결된 모델명
     model_name = 'gemini-flash-latest' 
     
     try:
@@ -349,17 +343,16 @@ else:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    # [핵심] 콜백 함수에서 구글 시트에 저장
                     def save_phy(k):
                         val = st.session_state[k]
                         save_setting(k, val)
 
-                    p_active = st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=save_phy, args=("phy_active",))
+                    st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=save_phy, args=("phy_active",))
                     st.divider()
-                    p_damping = st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
-                    p_repulsion = st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
-                    p_len = st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
-                    p_overlap = st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
+                    st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
+                    st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
+                    st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
+                    st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
 
             ag_nodes = []
             final_edges = []
