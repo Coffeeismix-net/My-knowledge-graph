@@ -16,26 +16,26 @@ st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_ico
 
 st.markdown("""
 <style>
-    /* 기본 앱 스타일 */
+    /* [1] 기본 앱 스타일 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* Iframe (그래프) 스타일 */
+    /* [2] Iframe (그래프) 스타일 */
     iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
     
-    /* 입력 폼 스타일 */
+    /* [3] 입력 폼 스타일 */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { 
         background-color: #1a1a1a !important; 
         color: white !important; 
         border: 1px solid #333 !important; 
     }
     
-    /* 멀티셀렉트 스타일 */
+    /* [4] 멀티셀렉트 스타일 */
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [핵심 수정] 버튼 스타일: 내부 요소까지 강제 중앙 정렬 */
+    /* [5] 핵심 수정: 버튼 스타일 강제 중앙 정렬 (Deep CSS) */
     div.stButton > button { 
         background-color: #222 !important; 
         color: #fff !important; 
@@ -43,33 +43,35 @@ st.markdown("""
         width: 100%; 
         height: auto;
         min-height: 38px;
+        padding: 0px !important; 
+        margin: 0px !important;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        padding: 0px !important;
-        margin: 0px !important;
     }
     
-    /* 버튼 내부 텍스트(p 태그) 마진 제거 및 중앙 정렬 */
+    /* 버튼 내부의 텍스트 컨테이너(p 태그)를 강제로 중앙 정렬 */
     div.stButton > button p {
+        width: 100% !important;
+        text-align: center !important;
         margin: 0px !important;
         padding: 0px !important;
         line-height: 1 !important;
-        text-align: center !important;
-        width: 100%;
+        display: block !important;
     }
     
-    /* 버튼 내부 div (아이콘 등) 중앙 정렬 */
+    /* 버튼 내부의 아이콘 컨테이너도 중앙 정렬 */
     div.stButton > button > div {
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
+        width: 100% !important;
     }
 
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
     
-    /* 리스트 뷰 헤더 */
+    /* [6] 리스트 뷰 헤더 */
     .list-header-row { display: flex; align-items: center; height: 40px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -77,9 +79,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. SESSION STATE INITIALIZATION (상태 관리)
+# 2. SESSION STATE & INIT
 # ==========================================
 def init_session_state():
+    """앱 실행 시 필요한 상태 변수 초기화"""
     defaults = {
         'logged_in': False,
         'menu_mode': "Knowledge Graph",
@@ -90,7 +93,7 @@ def init_session_state():
         'search_history': [],
         'last_selection': None,
         'card_stack': [],
-        # 물리 엔진 설정
+        # 물리 엔진 설정 (기본값)
         'phy_active': True,
         'phy_damping': 0.9,
         'phy_repulsion': -1000,
@@ -105,7 +108,7 @@ def init_session_state():
 init_session_state()
 
 # ==========================================
-# 3. BACKEND: GOOGLE SHEETS & SETTINGS
+# 3. BACKEND: SETTINGS & DB
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -171,11 +174,10 @@ def save_setting_to_db(key, value):
         else: ws.append_row([key, str(value)])
     except: pass
 
+# 앱 시작 시 설정 로드
 load_settings_from_db()
 
-# ==========================================
-# 4. BACKEND: DATA OPERATIONS
-# ==========================================
+# --- 데이터(Nodes) 관리 ---
 def load_nodes():
     wb = get_workbook()
     if not wb: return []
@@ -219,6 +221,7 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 5, ",".join(keywords))
     except: pass
 
+# --- 휴지통 (Trash) ---
 def move_to_trash(node_id, node_data):
     wb = get_workbook()
     if not wb: return
@@ -239,6 +242,7 @@ def move_to_trash(node_id, node_data):
         cell = main_sheet.find(str(node_id))
         if cell: main_sheet.delete_rows(cell.row)
         
+        # UI 상태 업데이트
         st.session_state['nodes_db'] = [n for n in st.session_state['nodes_db'] if str(n['id']) != str(node_id)]
         st.session_state['card_stack'] = [n for n in st.session_state['card_stack'] if str(n['id']) != str(node_id)]
         
@@ -272,7 +276,7 @@ def permanent_delete(node_id):
     except: pass
 
 # ==========================================
-# 5. AI ENGINE
+# 4. AI ENGINE & HELPERS
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets: return {"success": False, "error": "Secrets Error"}
@@ -285,9 +289,7 @@ def ai_process(text):
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
     except Exception as e: return {"success": False, "error": str(e)}
 
-# ==========================================
-# 6. HELPER FUNCTIONS (UI)
-# ==========================================
+# 색상 팔레트 (누락 방지)
 FIXED_COLORS = { 
     "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", 
     "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" 
@@ -299,9 +301,9 @@ def get_group_color(group_name):
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
+# 액션 헬퍼 함수
 def on_update_setting(key):
-    """설정값 변경 시 DB 저장 (콜백)"""
-    # 콜백 시점에는 이미 session_state가 업데이트 된 상태임
+    """설정값이 변경되면 즉시 DB에 저장"""
     save_setting_to_db(key, st.session_state[key])
 
 def act_add_ws(node_id):
@@ -318,6 +320,7 @@ def act_clear_ws(): st.session_state['workspace_nodes'] = []
 def act_update(nid, label, summary, kw_str):
     k_list = [k.strip() for k in kw_str.split(',')]
     update_node(nid, label, summary, k_list)
+    # 로컬/UI 상태 업데이트
     for n in st.session_state['nodes_db']:
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
@@ -334,14 +337,14 @@ def act_trash(nid):
         st.success("Moved to Trash 🗑️"); time.sleep(0.5); st.rerun()
 
 # ==========================================
-# 7. MAIN APP LOGIC
+# 5. MAIN LOGIC (ROUTING)
 # ==========================================
 
-# DB 로드 (최초 1회)
+# 데이터 로드 (앱 실행 시 1회)
 if not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
 
-# --- 로그인 화면 ---
+# [VIEW] 로그인 화면
 if not st.session_state['logged_in']:
     st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1><br>", unsafe_allow_html=True)
     _, c, _ = st.columns([1,1,1])
@@ -355,12 +358,16 @@ if not st.session_state['logged_in']:
                     st.rerun()
                 else: st.error("Check ID/PW")
 
-# --- 메인 화면 ---
+# [VIEW] 메인 화면
 else:
     left, main = st.columns([1.5, 4.5])
     
+    # --------------------------
+    # [좌측] 검색 및 키워드 순위
+    # --------------------------
     df = pd.DataFrame(st.session_state['nodes_db'])
-    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
+    kw_counts = pd.DataFrame()
+    node_degree, edges = {}, []
     
     if not df.empty:
         df['id'] = df['id'].astype(str)
@@ -370,6 +377,7 @@ else:
             kw_counts = pd.Series(all_kw).value_counts().reset_index()
             kw_counts.columns = ['keyword', 'count']
         
+        # 엣지 계산 (그래프용)
         node_degree = {r['id']:0 for _,r in df.iterrows()}
         for i in range(len(df)):
             for j in range(i+1, len(df)):
@@ -377,7 +385,6 @@ else:
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
-    # [좌측 사이드바]
     with left:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
@@ -415,11 +422,12 @@ else:
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
-    # [오른쪽 메인]
+    # --------------------------
+    # [오른쪽] 메인 콘텐츠
+    # --------------------------
     with main:
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].subheader(f"📂 {st.session_state['menu_mode']}")
-        
         if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
         if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
         if menu_cols[3].button("Add", key="nav_add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
@@ -427,14 +435,14 @@ else:
         if menu_cols[5].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
         st.divider()
 
-        # --- VIEW 1: KNOWLEDGE GRAPH ---
+        # [Mode 1] Knowledge Graph
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
             c_g1, c_g2 = st.columns([8, 2])
             with c_g2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
-                    # [핵심 수정] value에 st.session_state 값을 바인딩하여 리셋 방지
+                    # [설정값 유지 보장] value=st.session_state[key] 사용
                     st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=on_update_setting, args=("phy_active",))
                     st.divider()
                     st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=on_update_setting, args=("phy_damping",))
@@ -449,13 +457,10 @@ else:
                     base_color = get_group_color(r['group'])
                     sz = min(20 + node_degree.get(r['id'], 0)*5, 60)
                     clr, fclr, bw, sc = base_color, "white", 1, base_color
-                    
                     if sel_kw:
                         if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
-                    
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
-                
                 for e in edges:
                     e_w, e_c = 1, "#555"
                     if sel_kw:
@@ -492,21 +497,23 @@ else:
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
                             b1, b2, b3 = st.columns(3)
+                            # [정렬] CSS가 적용되어 아이콘이 중앙에 옴
                             if b1.button("💾", key=f"up_{n['id']}", use_container_width=True, help="Update"): act_update(n['id'], nl, ns, nk)
                             if b2.button("🗑️", key=f"del_{n['id']}", use_container_width=True, help="Trash"): act_trash(n['id'])
                             if b3.button("❌", key=f"cl_{n['id']}", use_container_width=True, help="Close"): act_close_ws(n['id']); st.rerun()
 
-        # --- VIEW 2: LIST VIEW ---
+        # [Mode 2] List View
         elif st.session_state['menu_mode'] == "List View":
-            
             if st.session_state['card_stack']:
                 st.markdown("### 🗂️ Active Stack")
                 stack_cols = st.columns(3)
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.2, 1.2, 1.1])
+                            # [정렬 수정] 버튼 컬럼 비율 조정
+                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
                             st_c1.markdown(f"#### {node_data['label']}")
+                            
                             if st_c2.button("✏️", key=f"se_{i}", use_container_width=True, help="Edit"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
                             if st_c3.button("🗑️", key=f"sd_{i}", use_container_width=True, help="Trash"):
@@ -542,7 +549,7 @@ else:
                                 act_trash(row['id'])
             else: st.info("No data found.")
 
-        # --- VIEW 3: ADD DATA ---
+        # [Mode 3] Add Data
         elif st.session_state['menu_mode'] == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
@@ -552,10 +559,7 @@ else:
                     if ti and co:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
-                            st.session_state['temp_analysis'] = { 
-                                "title": ti, "content": co, "summary": res.get('summary',''), 
-                                "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') 
-                            }
+                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
@@ -575,7 +579,7 @@ else:
                     else: st.error("Save Error")
                 if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
 
-        # --- VIEW 4: TRASH CAN ---
+        # [Mode 4] Trash Can
         elif st.session_state['menu_mode'] == "Trash Can":
             st.markdown("### 🗑️ Trash Can (Recycle Bin)")
             st.caption("삭제된 노드는 여기에 30일간 보관됩니다.")
@@ -590,10 +594,8 @@ else:
                             del_date = datetime.strptime(del_date_str, "%y-%m-%d %H:%M")
                             days_left = 30 - (now - del_date).days
                         except: days_left = 0
-                        
                         c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
                         c1.caption(f"Deleted: {del_date_str} (남은 기간: {days_left}일)")
-                        
                         if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
                             restore_node(row); st.success("Restored!"); time.sleep(0.5); st.rerun()
                         if c3.button("🔥 Delete", key=f"per_del_{row['id']}", type="primary", use_container_width=True):
