@@ -31,11 +31,8 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [버튼 스타일 완전 재정의 - 쏠림 현상 해결] */
-    /* Streamlit 컬럼 간의 기본 간격(gap)이 버튼 정렬을 방해하므로 조정 */
-    div[data-testid="column"] {
-        padding: 0px !important;
-    }
+    /* [버튼 스타일 수정 - 텍스트 복구 및 정렬] */
+    div[data-testid="column"] { padding: 0px !important; }
     
     div.stButton > button {
         background-color: #222 !important; 
@@ -43,29 +40,30 @@ st.markdown("""
         border: 1px solid #444 !important; 
         width: 100%;
         height: 38px;
-        /* 내부 정렬 핵심 */
+        /* Flexbox로 중앙 정렬 */
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        padding: 0px !important; /* 패딩을 0으로 해야 쏠림이 사라짐 */
+        padding: 0px !important;
         margin: 0px !important;
     }
     
-    /* 버튼 안의 텍스트/아이콘 강제 중앙 정렬 */
+    /* 버튼 내부 텍스트(p 태그) - 다시 보이게 수정 */
+    div.stButton > button p {
+        display: block !important; /* 다시 보이게 설정 */
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1 !important;
+        text-align: center !important;
+        width: 100%;
+    }
+    
+    /* 버튼 내부 컨테이너 */
     div.stButton > button > div {
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-    }
-    div.stButton > button p {
-        display: none !important; /* 텍스트 찌꺼기 제거 */
-    }
-    /* 아이콘이 텍스트로 인식될 경우를 대비 */
-    div.stButton > button:before {
-        content: attr(data-content); /* 아이콘 유지 */
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        width: 100%;
     }
 
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
@@ -391,7 +389,6 @@ else:
                     if sel_kw:
                         if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
                         else: clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
-                    # [Graph View Fix] 툴팁 추가 및 상호작용 제한
                     ag_nodes.append(Node(id=r['id'], label=r['label'], title=f"{r['label']}\n{r['keywords']}", size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
                 for e in edges:
                     e_w, e_c = 1, "#555"
@@ -403,7 +400,7 @@ else:
 
             cfg = Config(width="100%", height=600, directed=False, nodeHighlightBehavior=True, highlightColor="#F7A7A6", collapsible=False, 
                          node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                         interaction={'hover':True, 'navigationButtons':False, 'keyboard':False}, # [Graph Fix] 더블클릭 오동작 방지
+                         interaction={'hover':True, 'navigationButtons':False, 'keyboard':False}, 
                          backgroundColor="#000000")
             cfg.physics = {
                 "enabled": True, "solver": "forceAtlas2Based",
@@ -439,9 +436,8 @@ else:
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.2, 1.2, 1.1])
+                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            # [List Fix] 버튼 ID 충돌 방지를 위해 unique key에 index뿐만 아니라 id도 조합
                             if st_c2.button("✏️", key=f"se_{node_data['id']}_{i}", use_container_width=True, help="Edit"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
                             if st_c3.button("🗑️", key=f"sd_{node_data['id']}_{i}", use_container_width=True, help="Trash"): act_trash(node_data['id'])
