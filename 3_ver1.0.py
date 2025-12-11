@@ -36,7 +36,7 @@ def get_db_connection():
         return None
 
 # ==========================================
-# [SYSTEM] SETTINGS MANAGER (설정 저장소)
+# [SYSTEM] SETTINGS MANAGER
 # ==========================================
 def load_settings():
     wb = get_db_connection()
@@ -61,7 +61,6 @@ def save_setting(key, value):
         else: ws.append_row([key, str(value)])
     except: pass
 
-# [초기화] 설정값 로드 (세션에 없을 때만)
 if 'settings_loaded' not in st.session_state:
     saved = load_settings()
     def get_val(k, default, type_func):
@@ -71,13 +70,11 @@ if 'settings_loaded' not in st.session_state:
             return type_func(val)
         except: return default
 
-    # 세션에 값이 없을 때만 DB 값으로 채움 (덮어쓰기 방지)
     if 'phy_active' not in st.session_state: st.session_state['phy_active'] = get_val('phy_active', True, bool)
     if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
     if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
     if 'phy_len' not in st.session_state: st.session_state['phy_len'] = get_val('phy_len', 200, int)
     if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = get_val('phy_overlap', True, bool)
-    
     st.session_state['settings_loaded'] = True
 
 if 'card_stack' not in st.session_state: st.session_state['card_stack'] = []
@@ -217,14 +214,28 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
+    
     div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
+    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
+    
+    /* [수정] 버튼 스타일: 아이콘 중앙 정렬을 위해 padding 제거 및 flex 적용 */
+    div.stButton > button { 
+        background-color: #222 !important; 
+        color: #fff !important; 
+        border: 1px solid #444 !important; 
+        width: 100%; 
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        padding: 0px !important; /* 핵심: 패딩을 0으로 만들어 아이콘 쏠림 방지 */
+    }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    
     .list-header-row { display: flex; align-items: center; height: 40px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -365,23 +376,16 @@ else:
             with c_g2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
-                    
-                    # [핵심] 값이 바뀔 때마다 DB에 저장하는 콜백 함수
-                    def save_phy():
-                        # 위젯에서 session_state로 값은 이미 들어옴
-                        # 여기서는 session_state 값을 DB에 저장만 함
-                        save_setting("phy_active", st.session_state.phy_active)
-                        save_setting("phy_damping", st.session_state.phy_damping)
-                        save_setting("phy_repulsion", st.session_state.phy_repulsion)
-                        save_setting("phy_len", st.session_state.phy_len)
-                        save_setting("phy_overlap", st.session_state.phy_overlap)
+                    def save_phy(k):
+                        st.session_state[k] = st.session_state[k] # Session Update
+                        save_setting(k, st.session_state[k])      # DB Update
 
-                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=save_phy)
+                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=save_phy, args=("phy_active",))
                     st.divider()
-                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=save_phy)
-                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=save_phy)
-                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=save_phy)
-                    st.checkbox("겹침 방지", key="phy_overlap", on_change=save_phy)
+                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
+                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
+                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
+                    st.checkbox("겹침 방지", key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
 
             ag_nodes, final_edges = [], []
             sel_kw = st.session_state['selected_keyword']
@@ -409,13 +413,8 @@ else:
                 "stabilization": { "enabled": not st.session_state['phy_active'], "iterations": 1000 }
             }
             
-            # [수정] key 제거하여 TypeError 방지 (구버전 호환성)
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
-            
-            if sel and sel != st.session_state['last_selection']: 
-                st.session_state['last_selection'] = sel
-                add_ws(sel)
-                st.rerun()
+            if sel and sel != st.session_state['last_selection']: st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
 
             wsn = st.session_state['workspace_nodes']
             if wsn:
@@ -444,14 +443,18 @@ else:
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
+                            # [버튼 정렬 수정] 제목(7) | 편집(1) | 삭제(1) | 닫기(1)
                             st_c1, st_c2, st_c3, st_c4 = st.columns([7, 1, 1, 1])
                             st_c1.markdown(f"#### {node_data['label']}")
+                            
+                            # use_container_width=True로 버튼이 컬럼 꽉 채우게 하여 중앙 정렬 유도
                             if st_c2.button("✏️", key=f"se_{i}", use_container_width=True, help="Edit"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; add_ws(node_data['id']); st.rerun()
                             if st_c3.button("🗑️", key=f"sd_{i}", use_container_width=True, help="Trash"):
                                 delete_to_trash_act(node_data['id'])
                             if st_c4.button("✕", key=f"sc_{i}", use_container_width=True, help="Close"):
                                 st.session_state['card_stack'].pop(i); st.rerun()
+                            
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
