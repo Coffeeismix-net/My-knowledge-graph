@@ -16,65 +16,68 @@ st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_ico
 
 st.markdown("""
 <style>
-    /* [기본 스타일] */
+    /* [1] 전체 테마 설정 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
+    
+    /* [2] 그래프 뷰 스타일 */
     iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
     
-    /* [입력 폼] */
+    /* [3] 입력 폼 및 셀렉트 박스 스타일 */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { 
         background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; 
     }
-    
-    /* [멀티셀렉트] */
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [버튼 스타일 수정 - 텍스트 복구 및 정렬] */
-    div[data-testid="column"] { padding: 0px !important; }
-    
-    div.stButton > button {
-        background-color: #222 !important; 
+    /* [4] 핵심 수정: 고스트 버튼 스타일 (배경 제거 & 아이콘화) */
+    div.stButton > button { 
+        background-color: transparent !important; /* 배경 투명하게 */
+        border: 1px solid transparent !important; /* 테두리도 투명하게 */
         color: #fff !important; 
-        border: 1px solid #444 !important; 
-        width: 100%;
-        height: 38px;
-        /* Flexbox로 중앙 정렬 */
+        width: 100%; 
+        height: auto;
+        min-height: 38px;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
         padding: 0px !important;
         margin: 0px !important;
+        transition: all 0.2s ease; /* 부드러운 효과 */
     }
     
-    /* 버튼 내부 텍스트(p 태그) - 다시 보이게 수정 */
+    /* 버튼 내부 텍스트/아이콘 중앙 정렬 */
     div.stButton > button p {
-        display: block !important; /* 다시 보이게 설정 */
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1 !important;
+        width: 100% !important;
         text-align: center !important;
-        width: 100%;
-    }
-    
-    /* 버튼 내부 컨테이너 */
-    div.stButton > button > div {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        width: 100%;
+        margin: 0 !important;
+        line-height: 1 !important;
     }
 
-    div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
-    div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    /* 마우스 올렸을 때 효과 (Hover) */
+    div.stButton > button:hover { 
+        background-color: #222 !important; /* 살짝 어둡게 */
+        border: 1px solid #444 !important; /* 테두리 살짝 표시 */
+        color: #00ADB5 !important; /* 글자색 포인트 */
+        border-radius: 8px;
+    }
     
-    /* [리스트 뷰 헤더] */
+    /* Primary 버튼 (저장 등)은 눈에 띄게 유지 */
+    div.stButton > button[kind="primary"] { 
+        background-color: #E03131 !important; 
+        border: none !important; 
+        color: white !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #c92a2a !important;
+    }
+    
+    /* [5] 리스트 뷰 헤더 및 구분선 */
     .list-header-row { display: flex; align-items: center; height: 35px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     
-    /* [타이트한 헤더] */
     .tight-header {
         font-size: 1.5rem;
         font-weight: 600;
@@ -106,7 +109,7 @@ def init_session_state():
 init_session_state()
 
 # ==========================================
-# 3. BACKEND & DB
+# 3. BACKEND: DB & SETTINGS
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
