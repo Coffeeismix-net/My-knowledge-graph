@@ -364,28 +364,14 @@ else:
 
     # [오른쪽 메인]
     with main:
-        h1, h2, h3, h4, h5 = st.columns([5, 1, 1, 1, 1]) # 비율 조정
-        h1.subheader(f"📂 {st.session_state['menu_mode']}")
-        if h2.button("Graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if h3.button("List", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
-        if h4.button("Add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        # Out 대신 Trash로 대체하거나 추가 (여기선 Out 옆에 추가하거나 Out을 Trash로 변경)
-        # 칸이 모자라니 Out 버튼 아래에 작게 넣거나, h5를 쪼갭니다.
-        # 이번엔 깔끔하게 Out 자리에 Trash를 넣고, Out은 별도로 빼거나 그냥 둡니다.
-        # 요청사항: "페이지 추가 바람" -> 메뉴바에 'Trash' 버튼 추가
-        
-        # 메뉴 레이아웃 재조정 (Graph, List, Add, Trash, Out)
-        # 상단 컬럼 재정의
-    
-    # 메뉴 렌더링 다시 (깔끔하게)
-    with main:
+        # [수정] 상단 메뉴바 중복 삭제 및 Key 추가로 에러 방지
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].subheader(f"📂 {st.session_state['menu_mode']}")
-        if menu_cols[1].button("Graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if menu_cols[2].button("List", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
-        if menu_cols[3].button("Add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        if menu_cols[4].button("Trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
-        if menu_cols[5].button("Out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
+        if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+        if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
+        if menu_cols[3].button("Add", key="nav_add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
+        if menu_cols[4].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
+        if menu_cols[5].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
         st.divider()
 
         # ----------------------
@@ -544,7 +530,7 @@ else:
                 if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
 
         # ----------------------
-        # 4. [NEW] Trash Can (휴지통)
+        # 4. Trash Can
         # ----------------------
         elif st.session_state['menu_mode'] == "Trash Can":
             st.markdown("### 🗑️ Trash Can (Recycle Bin)")
@@ -552,14 +538,11 @@ else:
             
             trash_data = load_trash()
             if trash_data:
-                # 30일 지난 항목 자동 감지 (UI 표시용)
                 now = datetime.now()
-                
                 for row in trash_data:
                     with st.container(border=True):
                         c1, c2, c3 = st.columns([7, 1.5, 1.5])
                         
-                        # 내용 표시
                         del_date_str = row.get('deleted_at', '')
                         try:
                             del_date = datetime.strptime(del_date_str, "%y-%m-%d %H:%M")
@@ -569,7 +552,6 @@ else:
                         c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
                         c1.caption(f"Deleted: {del_date_str} (남은 기간: {days_left}일)")
                         
-                        # 버튼
                         if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
                             restore_node(row)
                             st.success("Restored!"); time.sleep(0.5); st.rerun()
