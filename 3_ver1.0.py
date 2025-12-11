@@ -61,8 +61,7 @@ def save_setting(key, value):
         else: ws.append_row([key, str(value)])
     except: pass
 
-# [핵심 수정] 설정값 초기화 로직 강화
-# 세션에 값이 없을 때만 DB에서 불러옴 (중복 로드 방지)
+# [초기화] 설정값 로드 (세션에 없을 때만)
 if 'settings_loaded' not in st.session_state:
     saved = load_settings()
     def get_val(k, default, type_func):
@@ -72,6 +71,7 @@ if 'settings_loaded' not in st.session_state:
             return type_func(val)
         except: return default
 
+    # 세션에 값이 없을 때만 DB 값으로 채움 (덮어쓰기 방지)
     if 'phy_active' not in st.session_state: st.session_state['phy_active'] = get_val('phy_active', True, bool)
     if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
     if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
@@ -217,18 +217,14 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
-    
     div[data-testid="column"] button { background: transparent !important; border: none !important; color: #ccc !important; }
     div[data-testid="column"] button:hover { color: #00ADB5 !important; font-weight: bold; }
-    
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
-    
     .list-header-row { display: flex; align-items: center; height: 40px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -369,16 +365,23 @@ else:
             with c_g2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
-                    def save_phy(k):
-                        st.session_state[k] = st.session_state[k] # Session Update
-                        save_setting(k, st.session_state[k])      # DB Update
+                    
+                    # [핵심] 값이 바뀔 때마다 DB에 저장하는 콜백 함수
+                    def save_phy():
+                        # 위젯에서 session_state로 값은 이미 들어옴
+                        # 여기서는 session_state 값을 DB에 저장만 함
+                        save_setting("phy_active", st.session_state.phy_active)
+                        save_setting("phy_damping", st.session_state.phy_damping)
+                        save_setting("phy_repulsion", st.session_state.phy_repulsion)
+                        save_setting("phy_len", st.session_state.phy_len)
+                        save_setting("phy_overlap", st.session_state.phy_overlap)
 
-                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=save_phy, args=("phy_active",))
+                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=save_phy)
                     st.divider()
-                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
-                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
-                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
-                    st.checkbox("겹침 방지", key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
+                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=save_phy)
+                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=save_phy)
+                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=save_phy)
+                    st.checkbox("겹침 방지", key="phy_overlap", on_change=save_phy)
 
             ag_nodes, final_edges = [], []
             sel_kw = st.session_state['selected_keyword']
@@ -406,8 +409,8 @@ else:
                 "stabilization": { "enabled": not st.session_state['phy_active'], "iterations": 1000 }
             }
             
-            # [핵심] key를 고정하여 리렌더링 시 깜빡임 및 초기화 방지
-            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg, key="knowledge_graph_main")
+            # [수정] key 제거하여 TypeError 방지 (구버전 호환성)
+            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
             
             if sel and sel != st.session_state['last_selection']: 
                 st.session_state['last_selection'] = sel
