@@ -33,7 +33,7 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [5] 핵심 수정: 버튼 스타일 (고스트 버튼 + 강제 중앙 정렬) */
+    /* [5] 고스트 버튼 & 강제 중앙 정렬 (텍스트 기준) */
     div.stButton > button { 
         background-color: transparent !important; 
         border: 1px solid transparent !important; 
@@ -41,27 +41,27 @@ st.markdown("""
         width: 100%; 
         height: auto;
         min-height: 38px;
-        /* [핵심] 좁은 컬럼에서도 중앙 정렬 유지를 위한 설정 */
-        min-width: 0px !important; 
+        min-width: 0px !important;
         padding: 0px !important;
         margin: 0px !important;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        transition: all 0.2s ease;
+        line-height: 1 !important;
     }
     
-    /* 버튼 내부 요소(텍스트/아이콘) 강제 정렬 */
-    div.stButton > button p, 
-    div.stButton > button div {
+    /* 내부 텍스트 컨테이너 강제 정렬 */
+    div.stButton > button p {
         width: 100% !important;
         text-align: center !important;
-        justify-content: center !important;
-        display: flex !important;
-        align-items: center !important;
         margin: 0 !important;
         padding: 0 !important;
-        line-height: 1 !important;
+    }
+    div.stButton > button div {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
     }
 
     /* Hover 효과 */
@@ -72,7 +72,7 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* Primary 버튼은 스타일 유지 */
+    /* Primary 버튼은 눈에 띄게 */
     div.stButton > button[kind="primary"] { 
         background-color: #E03131 !important; 
         border: none !important; 
@@ -80,12 +80,11 @@ st.markdown("""
     }
     div.stButton > button[kind="primary"]:hover { background-color: #c92a2a !important; }
     
-    /* [6] 리스트 뷰 헤더 */
+    /* [6] 헤더 스타일 */
     .list-header-row { display: flex; align-items: center; height: 35px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     
-    /* [7] 타이트한 헤더 */
     .tight-header {
         font-size: 1.5rem;
         font-weight: 600;
@@ -117,7 +116,7 @@ def init_session_state():
 init_session_state()
 
 # ==========================================
-# 3. BACKEND: SETTINGS & DB
+# 3. BACKEND: DB & SETTINGS
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -331,7 +330,6 @@ else:
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
-    # [SIDEBAR]
     with left:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
@@ -367,7 +365,6 @@ else:
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
-    # [MAIN]
     with main:
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
@@ -449,11 +446,13 @@ else:
                         with st.container(border=True):
                             st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            if st_c2.button("✏️", key=f"se_{node_data['id']}_{i}", use_container_width=False, help="Edit"): # [수정] use_container_width 제거
+                            
+                            # [핵심 수정] 이모지 제거 -> 텍스트(Edit, Del, X)로 변경하여 정렬 문제 근본 해결
+                            if st_c2.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True, help="Edit"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
-                            if st_c3.button("🗑️", key=f"sd_{node_data['id']}_{i}", use_container_width=False, help="Trash"): # [수정] use_container_width 제거
+                            if st_c3.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True, help="Trash"):
                                 act_trash(node_data['id'])
-                            if st_c4.button("✕", key=f"sc_{node_data['id']}_{i}", use_container_width=False, help="Close"): # [수정] use_container_width 제거
+                            if st_c4.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True, help="Close"):
                                 st.session_state['card_stack'].pop(i); st.rerun()
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
@@ -464,7 +463,7 @@ else:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                st.caption(f"Total: {len(filtered_df)} Nodes") # [수정] Cards -> Nodes
+                st.caption(f"Total: {len(filtered_df)} Nodes")
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
@@ -474,13 +473,14 @@ else:
                             st.caption(f"Created: {row['timestamp']}")
                     with row_col2:
                         with st.popover("⋮"):
-                            # [수정] Popover 버튼 여백 축소 (use_container_width 제거)
-                            if st.button("View", key=f"lv_v_{row['id']}"):
+                            # [수정] 팝오버 메뉴 꽉 채우기 (Full Width)
+                            if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
                                 if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
                                     st.session_state['card_stack'].append(row.to_dict()); st.rerun()
-                            if st.button("Edit", key=f"lv_e_{row['id']}"):
+                            if st.button("Edit", key=f"lv_e_{row['id']}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(row['id']); st.rerun()
-                            if st.button("Trash", key=f"lv_d_{row['id']}"): act_trash(row['id'])
+                            if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True):
+                                act_trash(row['id'])
             else: st.info("No data found.")
 
         elif st.session_state['menu_mode'] == "Add Data":
