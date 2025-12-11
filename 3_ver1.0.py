@@ -13,6 +13,13 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
+# 물리 엔진 설정값 유지 (초기화)
+if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
+if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
+if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
+if 'phy_len' not in st.session_state: st.session_state['phy_len'] = 200
+if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = True
+
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
 # ==========================================
@@ -31,69 +38,11 @@ def get_db_connection():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         client = gspread.authorize(creds)
         
-        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"
-        return client.open_by_key(sheet_id) 
+        sheet_id = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc" 
+        return client.open_by_key(sheet_id).sheet1
     except Exception as e:
         st.error(f"❌ DB 연결 상세 에러: {e}")
         return None
-
-# ==========================================
-# SETTINGS MANAGER (구글 시트 연동)
-# ==========================================
-def load_settings():
-    wb = get_db_connection()
-    if not wb: return {}
-    try:
-        try:
-            ws = wb.worksheet("settings")
-        except:
-            ws = wb.add_worksheet(title="settings", rows=20, cols=2)
-            ws.append_row(["key", "value"])
-            return {}
-
-        records = ws.get_all_records()
-        # 빈 값이나 에러 방지를 위해 모두 문자열로 변환하여 읽음
-        settings = {str(r['key']): str(r['value']) for r in records}
-        return settings
-    except:
-        return {}
-
-def save_setting(key, value):
-    wb = get_db_connection()
-    if not wb: return
-    try:
-        ws = wb.worksheet("settings")
-        cell = ws.find(key)
-        if cell:
-            ws.update_cell(cell.row, 2, str(value))
-        else:
-            ws.append_row([key, str(value)])
-    except: pass
-
-# ----------------------------------------------------
-# [초기화] 앱 시작 시 설정값 로드 (안전장치 추가됨)
-# ----------------------------------------------------
-if 'settings_loaded' not in st.session_state:
-    saved_settings = load_settings()
-    
-    # [수정] 에러가 나도 죽지 않고 기본값을 반환하는 안전한 함수
-    def get_val(k, default, type_func):
-        val = saved_settings.get(k, str(default))
-        try:
-            if type_func == bool:
-                return str(val).strip().lower() == 'true'
-            return type_func(val)
-        except:
-            # 변환 실패 시(빈칸 등) 기본값 사용
-            return default
-
-    st.session_state['phy_active'] = get_val('phy_active', True, bool)
-    st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
-    st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
-    st.session_state['phy_len'] = get_val('phy_len', 200, int)
-    st.session_state['phy_overlap'] = get_val('phy_overlap', True, bool)
-    
-    st.session_state['settings_loaded'] = True
 
 # ==========================================
 # 1. HELPER: Dynamic Color
@@ -113,10 +62,9 @@ def get_group_color(group_name):
 # 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
-    wb = get_db_connection()
-    if not wb: return []
+    sheet = get_db_connection()
+    if not sheet: return []
     try:
-        sheet = wb.sheet1
         data = sheet.get_all_records()
         nodes = []
         for row in data:
@@ -131,9 +79,8 @@ def load_nodes():
 
 def add_node(label, group, summary, keywords):
     try:
-        wb = get_db_connection()
-        if not wb: return None
-        sheet = wb.sheet1
+        sheet = get_db_connection()
+        if not sheet: return None
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
@@ -145,10 +92,9 @@ def add_node(label, group, summary, keywords):
     except: return None
 
 def update_node(node_id, label, summary, keywords):
-    wb = get_db_connection()
-    if not wb: return
+    sheet = get_db_connection()
+    if not sheet: return
     try:
-        sheet = wb.sheet1
         cell = sheet.find(str(node_id))
         if cell:
             r = cell.row
@@ -161,10 +107,9 @@ def update_node(node_id, label, summary, keywords):
     except: pass
 
 def delete_node(node_id):
-    wb = get_db_connection()
-    if not wb: return
+    sheet = get_db_connection()
+    if not sheet: return
     try:
-        sheet = wb.sheet1
         cell = sheet.find(str(node_id))
         if cell: sheet.delete_rows(cell.row)
     except: pass
@@ -178,6 +123,7 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
+    # 안정적인 최신 모델 사용
     model_name = 'gemini-flash-latest' 
     
     try:
@@ -218,18 +164,18 @@ st.markdown("""
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
+    
+    /* 버튼 스타일 통일 */
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
+    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     .col-left { justify-content: flex-start; width: 100%; display: flex; padding-left: 12px; }
 </style>
 """, unsafe_allow_html=True)
-
-st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
 
 # 세션 초기화
 if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
@@ -259,7 +205,13 @@ def update_act(nid, label, summary, kw_str):
     st.success("Updated!"); time.sleep(0.5); st.rerun()
 def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['last_selection'] = None; st.rerun()
 
+# ----------------------------------------------------
+# 로그인 화면
+# ----------------------------------------------------
 if not st.session_state['logged_in']:
+    st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     _, c, _ = st.columns([1,1,1])
     with c:
         with st.form("login"):
@@ -274,7 +226,13 @@ if not st.session_state['logged_in']:
                         st.rerun()
                     else: st.error("Check ID/PW")
                 else: st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
+
+# ----------------------------------------------------
+# 메인 화면 (로그인 후)
+# ----------------------------------------------------
 else:
+    # [요청 2] 로그인 후에는 큰 제목 숨김 (깔끔하게)
+    
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges, kw_counts = {}, [], pd.DataFrame()
@@ -292,6 +250,9 @@ else:
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
+    # ------------------------------------
+    # [왼쪽] 공통 사이드바 (검색 및 순위)
+    # ------------------------------------
     with left:
         all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
@@ -328,31 +289,54 @@ else:
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
+    # ------------------------------------
+    # [오른쪽] 메인 콘텐츠 영역
+    # ------------------------------------
     with main:
-        m1, m2, m3, m4, m5 = st.columns([5, 1, 1, 1, 1])
-        m1.markdown("<h2 style='margin:0'>Graph View</h2>", unsafe_allow_html=True)
-        if m2.button("Graph"): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if m3.button("Add"): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        if m4.button("Set"): st.session_state['menu_mode'] = "Settings"; st.rerun()
-        if m5.button("Out"): st.session_state['logged_in'] = False; st.rerun()
+        # [요청 1] 상단 메뉴바 정렬 개선
+        # 비율을 조정하여 버튼들이 예쁘게 나열되도록 수정
+        # Set 버튼 삭제 -> List 버튼 추가
+        h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([6, 1, 1, 1, 1])
+        
+        # 현재 모드 표시
+        current_mode = st.session_state['menu_mode']
+        h_col1.subheader(f"📂 {current_mode}")
 
+        # 메뉴 버튼 (use_container_width=True로 정렬 맞춤)
+        if h_col2.button("Graph", use_container_width=True): 
+            st.session_state['menu_mode'] = "Knowledge Graph"
+            st.rerun()
+        if h_col3.button("List", use_container_width=True): # [요청 3, 4] Set -> List 변경
+            st.session_state['menu_mode'] = "List View"
+            st.rerun()
+        if h_col4.button("Add", use_container_width=True): 
+            st.session_state['menu_mode'] = "Add Data"
+            st.rerun()
+        if h_col5.button("Out", use_container_width=True): 
+            st.session_state['logged_in'] = False
+            st.rerun()
+
+        st.divider() # 메뉴와 내용 구분선
+
+        # --------------------------------------
+        # MODE 1: Knowledge Graph (기존)
+        # --------------------------------------
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
+            # 물방울 효과 제어 패널
             ctrl_col1, ctrl_col2 = st.columns([8, 2])
             with ctrl_col2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
                     
-                    def save_phy(k):
-                        val = st.session_state[k]
-                        save_setting(k, val)
+                    def dummy(): pass 
 
-                    st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=save_phy, args=("phy_active",))
+                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=dummy)
                     st.divider()
-                    st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=save_phy, args=("phy_damping",))
-                    st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=save_phy, args=("phy_repulsion",))
-                    st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=save_phy, args=("phy_len",))
-                    st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=save_phy, args=("phy_overlap",))
+                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=dummy)
+                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=dummy)
+                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=dummy)
+                    st.checkbox("겹침 방지", key="phy_overlap", on_change=dummy)
 
             ag_nodes = []
             final_edges = []
@@ -429,6 +413,44 @@ else:
                             if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
                             if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
 
+        # --------------------------------------
+        # [요청 4, 5] MODE 2: List View (New)
+        # --------------------------------------
+        elif st.session_state['menu_mode'] == "List View":
+            
+            # 검색 필터링 적용
+            filtered_df = df
+            if st.session_state['selected_keyword']:
+                # 해당 키워드가 포함된 행만 필터링
+                filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
+            
+            if not filtered_df.empty:
+                st.caption(f"총 {len(filtered_df)}개의 지식 카드가 있습니다.")
+                
+                # 리스트 형태로 출력
+                for _, row in filtered_df.iterrows():
+                    with st.container(border=True):
+                        # 상단: 그룹(색상) 및 제목
+                        c_top1, c_top2 = st.columns([0.2, 9.8])
+                        grp_color = get_group_color(row['group'])
+                        c_top1.markdown(f"<div style='width:15px; height:15px; background-color:{grp_color}; border-radius:50%; margin-top:10px;'></div>", unsafe_allow_html=True)
+                        c_top2.markdown(f"### {row['label']}")
+                        
+                        # 내용: 요약 및 키워드
+                        st.info(row['summary'])
+                        st.markdown(f"**Keywords:** {', '.join(row['keywords'])}")
+                        
+                        # 수정 버튼 (Graph View의 수정창으로 연결)
+                        if st.button("Edit", key=f"list_edit_{row['id']}"):
+                            st.session_state['menu_mode'] = "Knowledge Graph" # 그래프 뷰로 이동해서
+                            add_ws(row['id']) # 수정창 열기
+                            st.rerun()
+            else:
+                st.info("조건에 맞는 데이터가 없습니다.")
+
+        # --------------------------------------
+        # MODE 3: Add Data
+        # --------------------------------------
         elif st.session_state['menu_mode'] == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
