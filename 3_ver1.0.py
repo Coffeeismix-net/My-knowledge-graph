@@ -35,7 +35,7 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* 버튼 스타일 정규화 (중앙 정렬) */
+    /* [핵심 수정] 버튼 스타일: 내부 요소까지 강제 중앙 정렬 */
     div.stButton > button { 
         background-color: #222 !important; 
         color: #fff !important; 
@@ -46,10 +46,26 @@ st.markdown("""
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        padding: 0px 10px !important;
+        padding: 0px !important;
         margin: 0px !important;
-        line-height: 1 !important;
     }
+    
+    /* 버튼 내부 텍스트(p 태그) 마진 제거 및 중앙 정렬 */
+    div.stButton > button p {
+        margin: 0px !important;
+        padding: 0px !important;
+        line-height: 1 !important;
+        text-align: center !important;
+        width: 100%;
+    }
+    
+    /* 버튼 내부 div (아이콘 등) 중앙 정렬 */
+    div.stButton > button > div {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
     
@@ -272,7 +288,6 @@ def ai_process(text):
 # ==========================================
 # 6. HELPER FUNCTIONS (UI)
 # ==========================================
-# [수정] 누락되었던 색상 변수 복구
 FIXED_COLORS = { 
     "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", 
     "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" 
@@ -285,7 +300,8 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 def on_update_setting(key):
-    """설정값 변경 시 DB 저장"""
+    """설정값 변경 시 DB 저장 (콜백)"""
+    # 콜백 시점에는 이미 session_state가 업데이트 된 상태임
     save_setting_to_db(key, st.session_state[key])
 
 def act_add_ws(node_id):
@@ -308,7 +324,6 @@ def act_update(nid, label, summary, kw_str):
     for n in st.session_state['workspace_nodes']:
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
-            
     st.success("Updated!"); time.sleep(0.5); st.rerun()
 
 def act_trash(nid):
@@ -419,12 +434,13 @@ else:
             with c_g2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
-                    st.checkbox("💧 물방울 모드", key="phy_active", on_change=on_update_setting, args=("phy_active",))
+                    # [핵심 수정] value에 st.session_state 값을 바인딩하여 리셋 방지
+                    st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=on_update_setting, args=("phy_active",))
                     st.divider()
-                    st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=on_update_setting, args=("phy_damping",))
-                    st.slider("척력", -2000, -100, step=100, key="phy_repulsion", on_change=on_update_setting, args=("phy_repulsion",))
-                    st.slider("간격", 50, 400, step=10, key="phy_len", on_change=on_update_setting, args=("phy_len",))
-                    st.checkbox("겹침 방지", key="phy_overlap", on_change=on_update_setting, args=("phy_overlap",))
+                    st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=on_update_setting, args=("phy_damping",))
+                    st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=on_update_setting, args=("phy_repulsion",))
+                    st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=on_update_setting, args=("phy_len",))
+                    st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=on_update_setting, args=("phy_overlap",))
 
             ag_nodes, final_edges = [], []
             sel_kw = st.session_state['selected_keyword']
