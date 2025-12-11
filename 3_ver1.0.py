@@ -16,68 +16,76 @@ st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_ico
 
 st.markdown("""
 <style>
-    /* [1] 전체 테마 설정 */
+    /* [1] 기본 앱 스타일 */
     .stApp { background-color: #000000 !important; color: #ffffff !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
-    /* [2] 그래프 뷰 스타일 */
+    /* [2] Iframe (그래프) 스타일 */
     iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
     
-    /* [3] 입력 폼 및 셀렉트 박스 스타일 */
+    /* [3] 입력 폼 스타일 */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { 
         background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; 
     }
+    
+    /* [4] 멀티셀렉트 스타일 */
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [4] 핵심 수정: 고스트 버튼 스타일 (배경 제거 & 아이콘화) */
+    /* [5] 핵심 수정: 버튼 스타일 (고스트 버튼 + 강제 중앙 정렬) */
     div.stButton > button { 
-        background-color: transparent !important; /* 배경 투명하게 */
-        border: 1px solid transparent !important; /* 테두리도 투명하게 */
+        background-color: transparent !important; 
+        border: 1px solid transparent !important; 
         color: #fff !important; 
         width: 100%; 
         height: auto;
         min-height: 38px;
+        /* [핵심] 좁은 컬럼에서도 중앙 정렬 유지를 위한 설정 */
+        min-width: 0px !important; 
+        padding: 0px !important;
+        margin: 0px !important;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        padding: 0px !important;
-        margin: 0px !important;
-        transition: all 0.2s ease; /* 부드러운 효과 */
+        transition: all 0.2s ease;
     }
     
-    /* 버튼 내부 텍스트/아이콘 중앙 정렬 */
-    div.stButton > button p {
+    /* 버튼 내부 요소(텍스트/아이콘) 강제 정렬 */
+    div.stButton > button p, 
+    div.stButton > button div {
         width: 100% !important;
         text-align: center !important;
+        justify-content: center !important;
+        display: flex !important;
+        align-items: center !important;
         margin: 0 !important;
+        padding: 0 !important;
         line-height: 1 !important;
     }
 
-    /* 마우스 올렸을 때 효과 (Hover) */
+    /* Hover 효과 */
     div.stButton > button:hover { 
-        background-color: #222 !important; /* 살짝 어둡게 */
-        border: 1px solid #444 !important; /* 테두리 살짝 표시 */
-        color: #00ADB5 !important; /* 글자색 포인트 */
+        background-color: #222 !important; 
+        border: 1px solid #444 !important; 
+        color: #00ADB5 !important; 
         border-radius: 8px;
     }
     
-    /* Primary 버튼 (저장 등)은 눈에 띄게 유지 */
+    /* Primary 버튼은 스타일 유지 */
     div.stButton > button[kind="primary"] { 
         background-color: #E03131 !important; 
         border: none !important; 
         color: white !important;
     }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #c92a2a !important;
-    }
+    div.stButton > button[kind="primary"]:hover { background-color: #c92a2a !important; }
     
-    /* [5] 리스트 뷰 헤더 및 구분선 */
+    /* [6] 리스트 뷰 헤더 */
     .list-header-row { display: flex; align-items: center; height: 35px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     
+    /* [7] 타이트한 헤더 */
     .tight-header {
         font-size: 1.5rem;
         font-weight: 600;
@@ -109,7 +117,7 @@ def init_session_state():
 init_session_state()
 
 # ==========================================
-# 3. BACKEND: DB & SETTINGS
+# 3. BACKEND: SETTINGS & DB
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
@@ -441,10 +449,11 @@ else:
                         with st.container(border=True):
                             st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            if st_c2.button("✏️", key=f"se_{node_data['id']}_{i}", use_container_width=True, help="Edit"):
+                            if st_c2.button("✏️", key=f"se_{node_data['id']}_{i}", use_container_width=False, help="Edit"): # [수정] use_container_width 제거
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
-                            if st_c3.button("🗑️", key=f"sd_{node_data['id']}_{i}", use_container_width=True, help="Trash"): act_trash(node_data['id'])
-                            if st_c4.button("✕", key=f"sc_{node_data['id']}_{i}", use_container_width=True, help="Close"):
+                            if st_c3.button("🗑️", key=f"sd_{node_data['id']}_{i}", use_container_width=False, help="Trash"): # [수정] use_container_width 제거
+                                act_trash(node_data['id'])
+                            if st_c4.button("✕", key=f"sc_{node_data['id']}_{i}", use_container_width=False, help="Close"): # [수정] use_container_width 제거
                                 st.session_state['card_stack'].pop(i); st.rerun()
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
@@ -455,7 +464,7 @@ else:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                st.caption(f"Total: {len(filtered_df)} Cards")
+                st.caption(f"Total: {len(filtered_df)} Nodes") # [수정] Cards -> Nodes
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
@@ -465,12 +474,13 @@ else:
                             st.caption(f"Created: {row['timestamp']}")
                     with row_col2:
                         with st.popover("⋮"):
-                            if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
+                            # [수정] Popover 버튼 여백 축소 (use_container_width 제거)
+                            if st.button("View", key=f"lv_v_{row['id']}"):
                                 if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
                                     st.session_state['card_stack'].append(row.to_dict()); st.rerun()
-                            if st.button("Edit", key=f"lv_e_{row['id']}", use_container_width=True):
+                            if st.button("Edit", key=f"lv_e_{row['id']}"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(row['id']); st.rerun()
-                            if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
+                            if st.button("Trash", key=f"lv_d_{row['id']}"): act_trash(row['id'])
             else: st.info("No data found.")
 
         elif st.session_state['menu_mode'] == "Add Data":
