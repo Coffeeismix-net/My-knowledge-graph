@@ -14,9 +14,6 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
-# [CSS 정렬 문제 해결]
-# 버튼 내부의 텍스트/아이콘이 정확히 중앙에 오도록 Flexbox 정렬을 강제합니다.
-# 좁은 컬럼에서도 깨지지 않도록 min-width와 padding을 조절했습니다.
 st.markdown("""
 <style>
     /* 기본 앱 스타일 */
@@ -38,18 +35,18 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [핵심 수정] 버튼 스타일 정규화 (중앙 정렬) */
+    /* 버튼 스타일 정규화 (중앙 정렬) */
     div.stButton > button { 
         background-color: #222 !important; 
         color: #fff !important; 
         border: 1px solid #444 !important; 
         width: 100%; 
         height: auto;
-        min-height: 38px; /* 높이 통일 */
+        min-height: 38px;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        padding: 0px 10px !important; /* 내부 여백 조정 */
+        padding: 0px 10px !important;
         margin: 0px !important;
         line-height: 1 !important;
     }
@@ -66,18 +63,18 @@ st.markdown("""
 # ==========================================
 # 2. SESSION STATE INITIALIZATION (상태 관리)
 # ==========================================
-# 앱 실행 시 필요한 모든 상태 변수를 한곳에서 정의합니다.
 def init_session_state():
     defaults = {
         'logged_in': False,
         'menu_mode': "Knowledge Graph",
+        'nodes_db': [],          # [수정] 이 부분이 누락되어 에러가 났었습니다. 추가 완료!
         'workspace_nodes': [],
         'selected_keyword': None,
         'temp_analysis': None,
         'search_history': [],
         'last_selection': None,
         'card_stack': [],
-        # 물리 엔진 설정 (기본값)
+        # 물리 엔진 설정
         'phy_active': True,
         'phy_damping': 0.9,
         'phy_repulsion': -1000,
@@ -98,7 +95,6 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 
 @st.cache_resource
 def get_db_client():
-    """DB 클라이언트 연결 (캐싱하여 성능 최적화)"""
     try:
         if "gcp_service_account" not in st.secrets:
             st.error("❌ Secrets 설정 오류")
@@ -120,8 +116,7 @@ def get_workbook():
 
 # --- 설정(Settings) 관리 ---
 def load_settings_from_db():
-    """DB에서 설정을 읽어와 Session State에 업데이트"""
-    if st.session_state['settings_loaded']: return # 이미 로드했으면 패스
+    if st.session_state['settings_loaded']: return
 
     wb = get_workbook()
     if not wb: return
@@ -135,14 +130,12 @@ def load_settings_from_db():
         records = ws.get_all_records()
         settings_map = {str(r['key']): str(r['value']) for r in records}
 
-        # 타입 변환 헬퍼
         def safe_cast(val, type_func):
             try:
                 if type_func == bool: return str(val).strip().lower() == 'true'
                 return type_func(val)
             except: return None
 
-        # 세션 상태 업데이트 (DB 값 우선)
         if 'phy_active' in settings_map: st.session_state['phy_active'] = safe_cast(settings_map['phy_active'], bool)
         if 'phy_damping' in settings_map: st.session_state['phy_damping'] = safe_cast(settings_map['phy_damping'], float)
         if 'phy_repulsion' in settings_map: st.session_state['phy_repulsion'] = safe_cast(settings_map['phy_repulsion'], int)
@@ -153,7 +146,6 @@ def load_settings_from_db():
     except Exception: pass
 
 def save_setting_to_db(key, value):
-    """설정 변경 시 DB에 즉시 저장"""
     wb = get_workbook()
     if not wb: return
     try:
@@ -163,7 +155,6 @@ def save_setting_to_db(key, value):
         else: ws.append_row([key, str(value)])
     except: pass
 
-# 앱 시작 시 설정 로드
 load_settings_from_db()
 
 # ==========================================
@@ -212,7 +203,6 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 5, ",".join(keywords))
     except: pass
 
-# --- 휴지통 (Trash) 관련 로직 ---
 def move_to_trash(node_id, node_data):
     wb = get_workbook()
     if not wb: return
@@ -233,7 +223,6 @@ def move_to_trash(node_id, node_data):
         cell = main_sheet.find(str(node_id))
         if cell: main_sheet.delete_rows(cell.row)
         
-        # UI 상태 업데이트
         st.session_state['nodes_db'] = [n for n in st.session_state['nodes_db'] if str(n['id']) != str(node_id)]
         st.session_state['card_stack'] = [n for n in st.session_state['card_stack'] if str(n['id']) != str(node_id)]
         
@@ -288,9 +277,7 @@ def get_group_color(group_name):
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
-# 액션 처리 함수들
 def on_update_setting(key):
-    """설정값 변경 시 DB 저장"""
     save_setting_to_db(key, st.session_state[key])
 
 def act_add_ws(node_id):
@@ -307,15 +294,12 @@ def act_clear_ws(): st.session_state['workspace_nodes'] = []
 def act_update(nid, label, summary, kw_str):
     k_list = [k.strip() for k in kw_str.split(',')]
     update_node(nid, label, summary, k_list)
-    # 로컬 상태 업데이트
     for n in st.session_state['nodes_db']:
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
-    # 작업창 업데이트
     for n in st.session_state['workspace_nodes']:
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
-            
     st.success("Updated!"); time.sleep(0.5); st.rerun()
 
 def act_trash(nid):
@@ -351,7 +335,6 @@ if not st.session_state['logged_in']:
 else:
     left, main = st.columns([1.5, 4.5])
     
-    # 데이터 전처리
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges, kw_counts = {}, [], pd.DataFrame()
     
@@ -363,7 +346,6 @@ else:
             kw_counts = pd.Series(all_kw).value_counts().reset_index()
             kw_counts.columns = ['keyword', 'count']
         
-        # 엣지 계산
         node_degree = {r['id']:0 for _,r in df.iterrows()}
         for i in range(len(df)):
             for j in range(i+1, len(df)):
@@ -391,7 +373,7 @@ else:
         c1.markdown("### 🔑 Keywords")
         if c2.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
         
-        st.divider() # 깔끔한 구분선
+        st.divider()
         
         h_cols = st.columns([0.8, 3, 1.2])
         h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
@@ -411,11 +393,9 @@ else:
 
     # [오른쪽 메인]
     with main:
-        # 상단 네비게이션
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].subheader(f"📂 {st.session_state['menu_mode']}")
         
-        # 버튼 ID 중복 방지를 위한 고유 Key 사용
         if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
         if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
         if menu_cols[3].button("Add", key="nav_add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
@@ -426,7 +406,6 @@ else:
         # --- VIEW 1: KNOWLEDGE GRAPH ---
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
-            # 설정 패널
             c_g1, c_g2 = st.columns([8, 2])
             with c_g2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
@@ -438,7 +417,6 @@ else:
                     st.slider("간격", 50, 400, step=10, key="phy_len", on_change=on_update_setting, args=("phy_len",))
                     st.checkbox("겹침 방지", key="phy_overlap", on_change=on_update_setting, args=("phy_overlap",))
 
-            # 그래프 데이터 생성
             ag_nodes, final_edges = [], []
             sel_kw = st.session_state['selected_keyword']
             if not df.empty:
@@ -462,7 +440,6 @@ else:
                         else: e_c = "#222"
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
-            # 그래프 렌더링
             cfg = Config(width="100%", height=600, directed=False, nodeHighlightBehavior=True, highlightColor="#F7A7A6", collapsible=False, node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}}, backgroundColor="#000000")
             cfg.physics = {
                 "enabled": True, "solver": "forceAtlas2Based",
@@ -476,7 +453,6 @@ else:
                 act_add_ws(sel)
                 st.rerun()
 
-            # 하단 편집창
             wsn = st.session_state['workspace_nodes']
             if wsn:
                 wc1, wc2 = st.columns([8, 2])
@@ -498,18 +474,14 @@ else:
         # --- VIEW 2: LIST VIEW ---
         elif st.session_state['menu_mode'] == "List View":
             
-            # Active Stack
             if st.session_state['card_stack']:
                 st.markdown("### 🗂️ Active Stack")
                 stack_cols = st.columns(3)
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            # [정렬 수정] 컬럼 비율을 조정해 버튼들이 너무 좁지 않게 함
                             st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.2, 1.2, 1.1])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            
-                            # 각 버튼은 CSS에 의해 중앙 정렬됨
                             if st_c2.button("✏️", key=f"se_{i}", use_container_width=True, help="Edit"):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
                             if st_c3.button("🗑️", key=f"sd_{i}", use_container_width=True, help="Trash"):
@@ -521,7 +493,6 @@ else:
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
 
-            # Main List
             filtered_df = df
             if st.session_state['selected_keyword']:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
