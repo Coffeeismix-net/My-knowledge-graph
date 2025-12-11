@@ -67,7 +67,7 @@ def init_session_state():
     defaults = {
         'logged_in': False,
         'menu_mode': "Knowledge Graph",
-        'nodes_db': [],          # [수정] 이 부분이 누락되어 에러가 났었습니다. 추가 완료!
+        'nodes_db': [],
         'workspace_nodes': [],
         'selected_keyword': None,
         'temp_analysis': None,
@@ -272,12 +272,20 @@ def ai_process(text):
 # ==========================================
 # 6. HELPER FUNCTIONS (UI)
 # ==========================================
+# [수정] 누락되었던 색상 변수 복구
+FIXED_COLORS = { 
+    "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", 
+    "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" 
+}
+COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33"]
+
 def get_group_color(group_name):
     if group_name in FIXED_COLORS: return FIXED_COLORS[group_name]
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 def on_update_setting(key):
+    """설정값 변경 시 DB 저장"""
     save_setting_to_db(key, st.session_state[key])
 
 def act_add_ws(node_id):
@@ -300,6 +308,7 @@ def act_update(nid, label, summary, kw_str):
     for n in st.session_state['workspace_nodes']:
         if str(n['id']) == str(nid):
             n['label'] = label; n['summary'] = summary; n['keywords'] = k_list
+            
     st.success("Updated!"); time.sleep(0.5); st.rerun()
 
 def act_trash(nid):
