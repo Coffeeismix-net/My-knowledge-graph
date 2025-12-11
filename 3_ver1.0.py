@@ -36,7 +36,7 @@ def get_db_connection():
         return None
 
 # ==========================================
-# [SYSTEM] SETTINGS MANAGER (구글 시트 연동)
+# [SYSTEM] SETTINGS MANAGER (설정 저장소)
 # ==========================================
 def load_settings():
     wb = get_db_connection()
@@ -61,7 +61,8 @@ def save_setting(key, value):
         else: ws.append_row([key, str(value)])
     except: pass
 
-# 설정값 초기화 (세션에 로드)
+# [핵심 수정] 설정값 초기화 로직 강화
+# 세션에 값이 없을 때만 DB에서 불러옴 (중복 로드 방지)
 if 'settings_loaded' not in st.session_state:
     saved = load_settings()
     def get_val(k, default, type_func):
@@ -71,11 +72,12 @@ if 'settings_loaded' not in st.session_state:
             return type_func(val)
         except: return default
 
-    st.session_state['phy_active'] = get_val('phy_active', True, bool)
-    st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
-    st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
-    st.session_state['phy_len'] = get_val('phy_len', 200, int)
-    st.session_state['phy_overlap'] = get_val('phy_overlap', True, bool)
+    if 'phy_active' not in st.session_state: st.session_state['phy_active'] = get_val('phy_active', True, bool)
+    if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = get_val('phy_damping', 0.9, float)
+    if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = get_val('phy_repulsion', -1000, int)
+    if 'phy_len' not in st.session_state: st.session_state['phy_len'] = get_val('phy_len', 200, int)
+    if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = get_val('phy_overlap', True, bool)
+    
     st.session_state['settings_loaded'] = True
 
 if 'card_stack' not in st.session_state: st.session_state['card_stack'] = []
@@ -92,7 +94,7 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 # ==========================================
-# 2. DATABASE OPERATIONS (휴지통 기능 포함)
+# 2. DATABASE OPERATIONS
 # ==========================================
 def load_nodes():
     wb = get_db_connection()
@@ -140,18 +142,15 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 5, ",".join(keywords))
     except: pass
 
-# [NEW] 휴지통으로 이동 (Soft Delete)
 def move_to_trash(node_id, node_data):
     wb = get_db_connection()
     if not wb: return
     try:
-        # 1. Trash 시트 확보
         try: trash_sheet = wb.worksheet("trash")
         except: 
             trash_sheet = wb.add_worksheet(title="trash", rows=100, cols=7)
             trash_sheet.append_row(["id", "label", "group", "summary", "keywords", "created_at", "deleted_at"])
         
-        # 2. Trash 시트에 데이터 추가 (삭제 시간 포함)
         del_time = datetime.now().strftime("%y-%m-%d %H:%M")
         k_str = ",".join(node_data['keywords'])
         trash_sheet.append_row([
@@ -159,17 +158,13 @@ def move_to_trash(node_id, node_data):
             node_data['summary'], k_str, node_data['timestamp'], del_time
         ])
         
-        # 3. 원본 시트에서 삭제
         main_sheet = wb.sheet1
         cell = main_sheet.find(str(node_id))
         if cell: main_sheet.delete_rows(cell.row)
-        
-        # 4. 카드 스택에서도 제거
         st.session_state['card_stack'] = [n for n in st.session_state['card_stack'] if n['id'] != node_id]
         
     except Exception as e: st.error(f"휴지통 이동 실패: {e}")
 
-# [NEW] 휴지통 목록 불러오기
 def load_trash():
     wb = get_db_connection()
     if not wb: return []
@@ -178,21 +173,17 @@ def load_trash():
         return trash_sheet.get_all_records()
     except: return []
 
-# [NEW] 휴지통에서 복원
 def restore_node(node_row):
     wb = get_db_connection()
     if not wb: return
     try:
-        # 메인 시트로 복귀
         wb.sheet1.append_row([
             node_row['id'], node_row['label'], node_row['group'], 
             node_row['summary'], node_row['keywords'], node_row['created_at']
         ])
-        # 휴지통에서 영구 삭제
         permanent_delete(node_row['id'])
     except: pass
 
-# [NEW] 영구 삭제
 def permanent_delete(node_id):
     wb = get_db_connection()
     if not wb: return
@@ -234,7 +225,6 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* 버튼 스타일 */
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
@@ -258,9 +248,7 @@ if 'last_selection' not in st.session_state: st.session_state['last_selection'] 
 if 'nodes_db' not in st.session_state or not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
 
-# ----------------------------------------------------
-# 액션 함수들 (Edit/Delete/Close/Trash)
-# ----------------------------------------------------
+# 액션 함수
 def add_ws(node_id):
     tid = str(node_id)
     if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
@@ -281,12 +269,11 @@ def update_act(nid, label, summary, kw_str):
     st.success("Updated!"); time.sleep(0.5); st.rerun()
 
 def delete_to_trash_act(nid):
-    # DB에서 노드 정보 찾기
     tgt = next((n for n in st.session_state['nodes_db'] if str(n['id']) == str(nid)), None)
     if tgt:
-        move_to_trash(nid, tgt) # 휴지통 시트로 이동
-        st.session_state['nodes_db'] = [n for n in st.session_state['nodes_db'] if str(n['id']) != str(nid)] # 로컬 state 삭제
-        close_ws(nid) # 편집창 닫기
+        move_to_trash(nid, tgt)
+        st.session_state['nodes_db'] = [n for n in st.session_state['nodes_db'] if str(n['id']) != str(nid)]
+        close_ws(nid)
         st.success("Moved to Trash 🗑️"); time.sleep(0.5); st.rerun()
 
 # ----------------------------------------------------
@@ -364,7 +351,6 @@ else:
 
     # [오른쪽 메인]
     with main:
-        # [수정] 상단 메뉴바 중복 삭제 및 Key 추가로 에러 방지
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].subheader(f"📂 {st.session_state['menu_mode']}")
         if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
@@ -420,10 +406,14 @@ else:
                 "stabilization": { "enabled": not st.session_state['phy_active'], "iterations": 1000 }
             }
             
-            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
-            if sel and sel != st.session_state['last_selection']: st.session_state['last_selection'] = sel; add_ws(sel); st.rerun()
+            # [핵심] key를 고정하여 리렌더링 시 깜빡임 및 초기화 방지
+            sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg, key="knowledge_graph_main")
+            
+            if sel and sel != st.session_state['last_selection']: 
+                st.session_state['last_selection'] = sel
+                add_ws(sel)
+                st.rerun()
 
-            # [수정] Active Nodes 편집창 (Graph View 하단)
             wsn = st.session_state['workspace_nodes']
             if wsn:
                 wc1, wc2 = st.columns([8, 2])
@@ -438,7 +428,7 @@ else:
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
                             b1, b2, b3 = st.columns(3)
                             if b1.button("💾", key=f"up_{n['id']}", help="Update"): update_act(n['id'], nl, ns, nk)
-                            if b2.button("🗑️", key=f"del_{n['id']}", help="Trash"): delete_to_trash_act(n['id']) # 휴지통으로 이동
+                            if b2.button("🗑️", key=f"del_{n['id']}", help="Trash"): delete_to_trash_act(n['id'])
                             if b3.button("❌", key=f"cl_{n['id']}", help="Close"): close_ws(n['id']); st.rerun()
 
         # ----------------------
@@ -451,23 +441,14 @@ else:
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            # [요청 2, 3] 버튼 정렬 (제목 | 편집 | 삭제 | 닫기)
-                            # 비율: 제목(7), 편집(1), 삭제(1), 닫기(1)
                             st_c1, st_c2, st_c3, st_c4 = st.columns([7, 1, 1, 1])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            
                             if st_c2.button("✏️", key=f"se_{i}", use_container_width=True, help="Edit"):
-                                st.session_state['menu_mode'] = "Knowledge Graph"
-                                add_ws(node_data['id'])
-                                st.rerun()
-                            
+                                st.session_state['menu_mode'] = "Knowledge Graph"; add_ws(node_data['id']); st.rerun()
                             if st_c3.button("🗑️", key=f"sd_{i}", use_container_width=True, help="Trash"):
-                                delete_to_trash_act(node_data['id']) # 휴지통 이동 함수 호출
-
+                                delete_to_trash_act(node_data['id'])
                             if st_c4.button("✕", key=f"sc_{i}", use_container_width=True, help="Close"):
-                                st.session_state['card_stack'].pop(i)
-                                st.rerun()
-                            
+                                st.session_state['card_stack'].pop(i); st.rerun()
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
@@ -489,8 +470,7 @@ else:
                         with st.popover("⋮"):
                             if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
                                 if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
-                                    st.session_state['card_stack'].append(row.to_dict())
-                                    st.rerun()
+                                    st.session_state['card_stack'].append(row.to_dict()); st.rerun()
                             if st.button("Edit", key=f"lv_e_{row['id']}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; add_ws(row['id']); st.rerun()
                             if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True):
@@ -535,29 +515,21 @@ else:
         elif st.session_state['menu_mode'] == "Trash Can":
             st.markdown("### 🗑️ Trash Can (Recycle Bin)")
             st.caption("삭제된 노드는 여기에 30일간 보관됩니다.")
-            
             trash_data = load_trash()
             if trash_data:
                 now = datetime.now()
                 for row in trash_data:
                     with st.container(border=True):
                         c1, c2, c3 = st.columns([7, 1.5, 1.5])
-                        
                         del_date_str = row.get('deleted_at', '')
                         try:
                             del_date = datetime.strptime(del_date_str, "%y-%m-%d %H:%M")
                             days_left = 30 - (now - del_date).days
                         except: days_left = 0
-                        
                         c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
                         c1.caption(f"Deleted: {del_date_str} (남은 기간: {days_left}일)")
-                        
                         if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
-                            restore_node(row)
-                            st.success("Restored!"); time.sleep(0.5); st.rerun()
-                            
+                            restore_node(row); st.success("Restored!"); time.sleep(0.5); st.rerun()
                         if c3.button("🔥 Delete", key=f"per_del_{row['id']}", type="primary", use_container_width=True):
-                            permanent_delete(row['id'])
-                            st.warning("Permanently Deleted."); time.sleep(0.5); st.rerun()
-            else:
-                st.info("휴지통이 비어있습니다.")
+                            permanent_delete(row['id']); st.warning("Permanently Deleted."); time.sleep(0.5); st.rerun()
+            else: st.info("휴지통이 비어있습니다.")
