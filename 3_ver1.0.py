@@ -330,6 +330,7 @@ else:
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
+    # [SIDEBAR]
     with left:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
@@ -365,6 +366,7 @@ else:
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
+    # [MAIN]
     with main:
         menu_cols = st.columns([5, 1, 1, 1, 1, 1])
         menu_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
@@ -446,13 +448,11 @@ else:
                         with st.container(border=True):
                             st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            
-                            # [핵심 수정] 이모지 제거 -> 텍스트(Edit, Del, X)로 변경하여 정렬 문제 근본 해결
-                            if st_c2.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True, help="Edit"):
+                            # [핵심] 이모지 대신 텍스트 사용 & 중앙 정렬됨
+                            if st_c2.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
-                            if st_c3.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True, help="Trash"):
-                                act_trash(node_data['id'])
-                            if st_c4.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True, help="Close"):
+                            if st_c3.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
+                            if st_c4.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['card_stack'].pop(i); st.rerun()
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
@@ -473,14 +473,13 @@ else:
                             st.caption(f"Created: {row['timestamp']}")
                     with row_col2:
                         with st.popover("⋮"):
-                            # [수정] 팝오버 메뉴 꽉 채우기 (Full Width)
+                            # [핵심] 팝오버 메뉴 꽉 채우기 (Full Width)
                             if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
                                 if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
                                     st.session_state['card_stack'].append(row.to_dict()); st.rerun()
                             if st.button("Edit", key=f"lv_e_{row['id']}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(row['id']); st.rerun()
-                            if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True):
-                                act_trash(row['id'])
+                            if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
             else: st.info("No data found.")
 
         elif st.session_state['menu_mode'] == "Add Data":
@@ -529,7 +528,13 @@ else:
                         c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
                         c1.caption(f"Deleted: {del_date_str} (남은 기간: {days_left}일)")
                         if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
-                            restore_node(row); st.success("Restored!"); time.sleep(0.5); st.rerun()
+                            # [핵심 Fix] 복구 시 Session State에도 즉시 반영
+                            restore_node(row)
+                            st.session_state['nodes_db'].append({
+                                "id": str(row['id']), "label": row['label'], "group": row['group'], # group key check
+                                "summary": row['summary'], "keywords": str(row['keywords']).split(','), "timestamp": row['created_at']
+                            })
+                            st.success("Restored!"); time.sleep(0.5); st.rerun()
                         if c3.button("🔥 Delete", key=f"per_del_{row['id']}", type="primary", use_container_width=True):
                             permanent_delete(row['id']); st.warning("Permanently Deleted."); time.sleep(0.5); st.rerun()
             else: st.info("휴지통이 비어있습니다.")
