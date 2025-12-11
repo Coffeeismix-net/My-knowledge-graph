@@ -7,18 +7,22 @@ import json
 import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime # [NEW] 시간 관리를 위해 추가
 
 # ==========================================
 # 4. UI STYLE & LAYOUT
 # ==========================================
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
-# 물리 엔진 설정값 유지 (초기화)
+# 물리 엔진 설정값 유지
 if 'phy_active' not in st.session_state: st.session_state['phy_active'] = True
 if 'phy_damping' not in st.session_state: st.session_state['phy_damping'] = 0.9
 if 'phy_repulsion' not in st.session_state: st.session_state['phy_repulsion'] = -1000
 if 'phy_len' not in st.session_state: st.session_state['phy_len'] = 200
 if 'phy_overlap' not in st.session_state: st.session_state['phy_overlap'] = True
+
+# [NEW] 리스트 뷰에서 '카드 스택'을 관리하기 위한 저장소
+if 'card_stack' not in st.session_state: st.session_state['card_stack'] = []
 
 # ==========================================
 # 0. GOOGLE SHEETS CONNECTION
@@ -59,7 +63,7 @@ def get_group_color(group_name):
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
 
 # ==========================================
-# 2. DATABASE OPERATIONS
+# 2. DATABASE OPERATIONS (수정됨)
 # ==========================================
 def load_nodes():
     sheet = get_db_connection()
@@ -70,9 +74,19 @@ def load_nodes():
         for row in data:
             k_str = str(row['keywords']) if row['keywords'] else ""
             kws = [k.strip() for k in k_str.split(',')] if k_str else []
+            
+            # [NEW] timestamp 필드 처리 (없으면 기본값 설정)
+            # 구글 시트에 'timestamp' 컬럼이 없거나 비어있으면 25-12-10 00:00 사용
+            ts = row.get('timestamp')
+            if not ts: ts = "25-12-10 00:00"
+
             nodes.append({
-                "id": str(row['id']), "label": row['label'], "group": row['group_name'],
-                "summary": row['summary'], "keywords": kws
+                "id": str(row['id']), 
+                "label": row['label'], 
+                "group": row['group_name'],
+                "summary": row['summary'], 
+                "keywords": kws,
+                "timestamp": ts # 시간 정보 로드
             })
         return nodes
     except: return []
@@ -80,16 +94,26 @@ def load_nodes():
 def add_node(label, group, summary, keywords):
     try:
         sheet = get_db_connection()
-        if not sheet: return None
+        if not sheet:
+            st.error("❌ Google Sheets 연결 실패")
+            return None
         import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        sheet.append_row([new_id, label, group, summary, kw_str])
+        
+        # [NEW] 현재 시간 자동 생성 (YY-MM-DD HH:MM 포맷)
+        now_ts = datetime.now().strftime("%y-%m-%d %H:%M")
+        
+        # 시트에 시간 컬럼 추가해서 저장 (6번째 칸)
+        sheet.append_row([new_id, label, group, summary, kw_str, now_ts])
+        
         return {
             "id": new_id, "label": label, "group": group, 
-            "summary": summary, "keywords": keywords
+            "summary": summary, "keywords": keywords, "timestamp": now_ts
         }
-    except: return None
+    except Exception as e:
+        st.error(f"❌ 데이터 저장 중 상세 에러: {e}")
+        return None
 
 def update_node(node_id, label, summary, keywords):
     sheet = get_db_connection()
@@ -104,6 +128,7 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 3, grp)
             sheet.update_cell(r, 4, summary)
             sheet.update_cell(r, 5, kw_str)
+            # 수정 시 시간은 업데이트 안 함 (최초 작성일 유지)
     except: pass
 
 def delete_node(node_id):
@@ -123,7 +148,6 @@ def ai_process(text):
     api_key = st.secrets["gemini"]["api_key"]
     genai.configure(api_key=api_key)
     
-    # 안정적인 최신 모델 사용
     model_name = 'gemini-flash-latest' 
     
     try:
@@ -164,16 +188,17 @@ st.markdown("""
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; }
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    
-    /* 버튼 스타일 통일 */
     div.stButton > button { background-color: #222 !important; color: #fff !important; border: 1px solid #444 !important; width: 100%; }
     div.stButton > button:hover { border-color: #00ADB5 !important; color: #00ADB5 !important; }
     div.stButton > button[kind="primary"] { background-color: #E03131 !important; border: none !important; }
-    
     .list-header-row { display: flex; align-items: center; height: 46px; border-bottom: 1px solid #333; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
     .col-left { justify-content: flex-start; width: 100%; display: flex; padding-left: 12px; }
+    
+    /* [NEW] 리스트 뷰 카드 스타일 */
+    .list-card-header { font-size: 1.1rem; font-weight: bold; color: white; display: flex; align-items: center; }
+    .list-card-meta { font-size: 0.85rem; color: #888; margin-left: auto; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -211,7 +236,6 @@ def delete_act(nid): delete_node(str(nid)); close_ws(nid); st.session_state['las
 if not st.session_state['logged_in']:
     st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    
     _, c, _ = st.columns([1,1,1])
     with c:
         with st.form("login"):
@@ -226,13 +250,7 @@ if not st.session_state['logged_in']:
                         st.rerun()
                     else: st.error("Check ID/PW")
                 else: st.error("⚠️ Secrets에 [login] 설정이 없습니다. 설정해주세요.")
-
-# ----------------------------------------------------
-# 메인 화면 (로그인 후)
-# ----------------------------------------------------
 else:
-    # [요청 2] 로그인 후에는 큰 제목 숨김 (깔끔하게)
-    
     left, main = st.columns([1.5, 4.5])
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges, kw_counts = {}, [], pd.DataFrame()
@@ -250,9 +268,6 @@ else:
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
-    # ------------------------------------
-    # [왼쪽] 공통 사이드바 (검색 및 순위)
-    # ------------------------------------
     with left:
         all_kws_unique = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws_unique] + [k for k in all_kws_unique if k not in st.session_state['search_history']]
@@ -289,48 +304,26 @@ else:
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
-    # ------------------------------------
-    # [오른쪽] 메인 콘텐츠 영역
-    # ------------------------------------
     with main:
-        # [요청 1] 상단 메뉴바 정렬 개선
-        # 비율을 조정하여 버튼들이 예쁘게 나열되도록 수정
-        # Set 버튼 삭제 -> List 버튼 추가
+        # 상단 메뉴바
         h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([6, 1, 1, 1, 1])
-        
-        # 현재 모드 표시
-        current_mode = st.session_state['menu_mode']
-        h_col1.subheader(f"📂 {current_mode}")
-
-        # 메뉴 버튼 (use_container_width=True로 정렬 맞춤)
-        if h_col2.button("Graph", use_container_width=True): 
-            st.session_state['menu_mode'] = "Knowledge Graph"
-            st.rerun()
-        if h_col3.button("List", use_container_width=True): # [요청 3, 4] Set -> List 변경
-            st.session_state['menu_mode'] = "List View"
-            st.rerun()
-        if h_col4.button("Add", use_container_width=True): 
-            st.session_state['menu_mode'] = "Add Data"
-            st.rerun()
-        if h_col5.button("Out", use_container_width=True): 
-            st.session_state['logged_in'] = False
-            st.rerun()
-
-        st.divider() # 메뉴와 내용 구분선
+        h_col1.subheader(f"📂 {st.session_state['menu_mode']}")
+        if h_col2.button("Graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+        if h_col3.button("List", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
+        if h_col4.button("Add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
+        if h_col5.button("Out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
+        st.divider()
 
         # --------------------------------------
-        # MODE 1: Knowledge Graph (기존)
+        # MODE 1: Knowledge Graph
         # --------------------------------------
         if st.session_state['menu_mode'] == "Knowledge Graph":
             
-            # 물방울 효과 제어 패널
             ctrl_col1, ctrl_col2 = st.columns([8, 2])
             with ctrl_col2:
                 with st.expander("⚙️ 효과 설정", expanded=False):
                     st.caption("🌊 물방울 물리 엔진")
-                    
                     def dummy(): pass 
-
                     st.checkbox("💧 물방울 모드", key="phy_active", on_change=dummy)
                     st.divider()
                     st.slider("점성", 0.1, 1.0, step=0.05, key="phy_damping", on_change=dummy)
@@ -348,10 +341,8 @@ else:
                     sz = min(20 + d*5, 60)
                     clr, fclr, bw, sc = base_color, "white", 1, base_color
                     if sel_kw:
-                        if sel_kw in r['keywords']: 
-                            clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
-                        else: 
-                            clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
+                        if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
+                        else: clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
                     ag_nodes.append(Node(id=r['id'], label=r['label'], size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
             
                 for e in edges:
@@ -364,32 +355,17 @@ else:
                     final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
 
             cfg = Config(
-                width="100%", 
-                height=600, 
-                directed=False, 
-                nodeHighlightBehavior=True,
-                highlightColor="#F7A7A6",
-                collapsible=False,
-                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                backgroundColor="#000000"
+                width="100%", height=600, directed=False, nodeHighlightBehavior=True, highlightColor="#F7A7A6", collapsible=False,
+                node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}}, backgroundColor="#000000"
             )
-            
             cfg.physics = {
-                "enabled": True,
-                "solver": "forceAtlas2Based",
+                "enabled": True, "solver": "forceAtlas2Based",
                 "forceAtlas2Based": {
-                    "theta": 0.5,
-                    "gravitationalConstant": st.session_state['phy_repulsion'],
-                    "centralGravity": 0.01,
-                    "springConstant": 0.08,
-                    "springLength": st.session_state['phy_len'],
-                    "damping": st.session_state['phy_damping'],
+                    "theta": 0.5, "gravitationalConstant": st.session_state['phy_repulsion'], "centralGravity": 0.01,
+                    "springConstant": 0.08, "springLength": st.session_state['phy_len'], "damping": st.session_state['phy_damping'],
                     "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0
                 },
-                "stabilization": {
-                    "enabled": not st.session_state['phy_active'], 
-                    "iterations": 1000
-                }
+                "stabilization": {"enabled": not st.session_state['phy_active'], "iterations": 1000}
             }
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
@@ -408,45 +384,76 @@ else:
                             nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
-                            
                             if st.button("💾 Update", key=f"up_{n['id']}"): update_act(n['id'], nl, ns, nk)
                             if st.button("🗑️ Delete", key=f"del_{n['id']}"): delete_act(n['id'])
                             if st.button("❌ Close", key=f"cl_{n['id']}"): close_ws(n['id']); st.rerun()
 
         # --------------------------------------
-        # [요청 4, 5] MODE 2: List View (New)
+        # [NEW] MODE 2: List View (업그레이드)
         # --------------------------------------
         elif st.session_state['menu_mode'] == "List View":
             
-            # 검색 필터링 적용
+            # [1] 상단: 선택된 카드 스택 (Stacking Cards)
+            if st.session_state['card_stack']:
+                st.markdown("### 🗂️ Active Stack")
+                # 카드를 가로로 나열 (최대 3개씩, 넘치면 아래로)
+                stack_cols = st.columns(3)
+                for i, node_data in enumerate(st.session_state['card_stack']):
+                    with stack_cols[i % 3]:
+                        with st.container(border=True):
+                            # 상단: 닫기 버튼과 제목
+                            st_c1, st_c2 = st.columns([9, 1])
+                            st_c1.markdown(f"#### {node_data['label']}")
+                            if st_c2.button("✕", key=f"close_stack_{i}"):
+                                st.session_state['card_stack'].pop(i)
+                                st.rerun()
+                            
+                            st.info(node_data['summary'])
+                            st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
+                st.divider()
+
+            # [2] 하단: 메인 리스트 (아코디언 스타일)
+            # 검색 필터링
             filtered_df = df
             if st.session_state['selected_keyword']:
-                # 해당 키워드가 포함된 행만 필터링
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                st.caption(f"총 {len(filtered_df)}개의 지식 카드가 있습니다.")
+                st.caption(f"Total: {len(filtered_df)} Cards")
                 
-                # 리스트 형태로 출력
                 for _, row in filtered_df.iterrows():
-                    with st.container(border=True):
-                        # 상단: 그룹(색상) 및 제목
-                        c_top1, c_top2 = st.columns([0.2, 9.8])
-                        grp_color = get_group_color(row['group'])
-                        c_top1.markdown(f"<div style='width:15px; height:15px; background-color:{grp_color}; border-radius:50%; margin-top:10px;'></div>", unsafe_allow_html=True)
-                        c_top2.markdown(f"### {row['label']}")
-                        
-                        # 내용: 요약 및 키워드
-                        st.info(row['summary'])
-                        st.markdown(f"**Keywords:** {', '.join(row['keywords'])}")
-                        
-                        # 수정 버튼 (Graph View의 수정창으로 연결)
-                        if st.button("Edit", key=f"list_edit_{row['id']}"):
-                            st.session_state['menu_mode'] = "Knowledge Graph" # 그래프 뷰로 이동해서
-                            add_ws(row['id']) # 수정창 열기
-                            st.rerun()
+                    # 한 줄 레이아웃: [내용(Expander)] + [메뉴(Popover)]
+                    row_col1, row_col2 = st.columns([0.95, 0.05])
+                    
+                    with row_col1:
+                        # [핵심] 제목 | 키워드 형태로 Expander 생성 (클릭 시 펼쳐짐)
+                        list_label = f"**{row['label']}** &nbsp; <small style='color:#888'>| &nbsp; {', '.join(row['keywords'])}</small>"
+                        with st.expander(list_label, expanded=False):
+                            st.write(row['summary'])
+                            st.caption(f"Created: {row['timestamp']}") # 작성 시간 표시
+                    
+                    with row_col2:
+                        # [핵심] 우측 3점 메뉴 (View/Edit/Delete)
+                        with st.popover("⋮"):
+                            # View 버튼: 상단 스택에 추가
+                            if st.button("View", key=f"lv_view_{row['id']}", use_container_width=True):
+                                # 중복 방지
+                                if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
+                                    st.session_state['card_stack'].append(row.to_dict())
+                                    st.rerun()
+                            
+                            # Edit 버튼: Graph View의 수정창으로 이동
+                            if st.button("Edit", key=f"lv_edit_{row['id']}", use_container_width=True):
+                                st.session_state['menu_mode'] = "Knowledge Graph"
+                                add_ws(row['id'])
+                                st.rerun()
+                                
+                            # Delete 버튼
+                            if st.button("Delete", key=f"lv_del_{row['id']}", use_container_width=True):
+                                delete_act(row['id'])
+
             else:
-                st.info("조건에 맞는 데이터가 없습니다.")
+                st.info("No data found.")
 
         # --------------------------------------
         # MODE 3: Add Data
@@ -461,20 +468,14 @@ else:
                         with st.spinner("Thinking..."):
                             res = ai_process(co)
                             st.session_state['temp_analysis'] = { 
-                                "title": ti, 
-                                "content": co, 
-                                "summary": res.get('summary',''), 
-                                "keywords": res.get('keywords',''), 
-                                "success": res['success'], 
-                                "error": res.get('error','') 
+                                "title": ti, "content": co, "summary": res.get('summary',''), 
+                                "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') 
                             }
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: 
-                    st.warning(f"{tmp['error']}") 
-                else: 
-                    st.success("Analysis Complete!")
+                if not tmp['success']: st.warning(f"{tmp['error']}") 
+                else: st.success("Analysis Complete!")
                 
                 st.markdown(f"**Title:** {tmp['title']}")
                 n_sum = st.text_area("Summary", value=tmp['summary'])
@@ -483,19 +484,12 @@ else:
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
                     group_name = final_keywords[0] if final_keywords else "General"
-                    
                     new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
-                    
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
                         st.session_state['temp_analysis'] = None
-                        st.success("Saved!")
-                        time.sleep(1)
-                        st.session_state['menu_mode'] = "Knowledge Graph"
-                        st.rerun()
-                    else:
-                        st.error("저장 중 오류가 발생했습니다.")
+                        st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+                    else: st.error("Save Error")
 
                 if st.button("Cancel", use_container_width=True): 
-                    st.session_state['temp_analysis'] = None
-                    st.rerun()
+                    st.session_state['temp_analysis'] = None; st.rerun()
