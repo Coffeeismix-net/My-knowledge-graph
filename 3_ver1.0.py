@@ -12,91 +12,43 @@ from datetime import datetime
 # ==========================================
 # 1. PAGE & STYLE CONFIGURATION
 # ==========================================
-st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
+st.set_page_config(layout="wide", page_title="Obsidian Knowledge Graph", page_icon="🔗")
 
 st.markdown("""
 <style>
-    /* [1] 기본 앱 스타일 */
-    .stApp { background-color: #000000 !important; color: #ffffff !important; }
+    /* [1] 기본 앱 스타일 - Obsidian Dark Theme 느낌 */
+    .stApp { background-color: #0b0c10 !important; color: #c5c6c7 !important; }
     header { visibility: hidden; }
     .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; }
     
     /* [2] Iframe (그래프) 스타일 */
-    iframe { background-color: #000000 !important; border: 1px solid #444 !important; border-radius: 12px; }
+    iframe { background-color: #0b0c10 !important; border: 1px solid #1f2833 !important; border-radius: 12px; }
     
     /* [3] 입력 폼 스타일 */
     .stTextInput>div>div>input, .stTextArea>div>div>textarea { 
-        background-color: #1a1a1a !important; color: white !important; border: 1px solid #333 !important; 
+        background-color: #1f2833 !important; color: #66fcf1 !important; border: 1px solid #45a29e !important; 
     }
     
-    /* [4] 멀티셀렉트 스타일 */
-    .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
-    .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
-    
-    /* [5] 고스트 버튼 & 강제 중앙 정렬 (텍스트 기준) */
+    /* [4] 멀티셀렉트 & 버튼 스타일 */
+    .stMultiSelect div[data-baseweb="select"] > div { background-color: #1f2833 !important; border-color: #45a29e !important; color: white !important; }
     div.stButton > button { 
-        background-color: transparent !important; 
-        border: 1px solid transparent !important; 
-        color: #fff !important; 
-        width: 100%; 
-        height: auto;
-        min-height: 38px;
-        min-width: 0px !important;
-        padding: 0px !important;
-        margin: 0px !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        line-height: 1 !important;
+        background-color: transparent !important; border: 1px solid #45a29e !important; color: #66fcf1 !important; 
+        border-radius: 5px; transition: all 0.3s ease;
     }
-    
-    /* 내부 텍스트 컨테이너 강제 정렬 */
-    div.stButton > button p {
-        width: 100% !important;
-        text-align: center !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    div.stButton > button div {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        width: 100% !important;
-    }
-
-    /* Hover 효과 */
     div.stButton > button:hover { 
-        background-color: #222 !important; 
-        border: 1px solid #444 !important; 
-        color: #00ADB5 !important; 
-        border-radius: 8px;
+        background-color: #45a29e !important; color: #0b0c10 !important; 
     }
-    
-    /* Primary 버튼은 눈에 띄게 */
     div.stButton > button[kind="primary"] { 
-        background-color: #E03131 !important; 
-        border: none !important; 
-        color: white !important;
+        background-color: #45a29e !important; color: #0b0c10 !important; border: none !important;
     }
-    div.stButton > button[kind="primary"]:hover { background-color: #c92a2a !important; }
     
-    /* [6] 헤더 스타일 */
-    .list-header-row { display: flex; align-items: center; height: 35px; font-weight: bold; color: #888; font-size: 0.85rem; }
-    .list-content-row { display: flex; align-items: center; height: 46px; }
-    .col-center { justify-content: center; width: 100%; display: flex; }
+    /* [5] 헤더 스타일 */
+    .tight-header { font-size: 1.5rem; font-weight: 700; color: #66fcf1; margin-bottom: 0px; }
+    .tight-hr { margin: 10px 0 20px 0; border: 0; border-top: 1px solid #1f2833; }
     
-    .tight-header {
-        font-size: 1.5rem;
-        font-weight: 600;
-        margin-bottom: 0px !important;
-        padding-bottom: 0px !important;
-    }
-    .tight-hr {
-        margin-top: 5px !important;
-        margin-bottom: 15px !important;
-        border: 0;
-        border-top: 1px solid #333;
-    }
+    /* 리스트 스타일 */
+    .list-row { display: flex; align-items: center; padding: 4px 0; border-bottom: 1px solid #1f2833; }
+    .list-row:hover { background-color: #1f2833; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,9 +58,18 @@ st.markdown("""
 def init_session_state():
     defaults = {
         'logged_in': False, 'menu_mode': "Knowledge Graph", 'nodes_db': [], 'workspace_nodes': [],
-        'selected_keyword': None, 'temp_analysis': None, 'search_history': [], 'last_selection': None, 'card_stack': [],
-        'phy_active': True, 'phy_damping': 0.9, 'phy_repulsion': -1000, 'phy_len': 200, 'phy_overlap': True,
-        'settings_loaded': False
+        'selected_keyword': None, 'temp_analysis': None, 'search_history': [], 
+        'last_selection': None, 'card_stack': [], 'settings_loaded': False,
+        
+        # [NEW] Obsidian Physics & View Settings
+        'view_mode': 'Global', # Global or Local
+        'perf_mode': False,    # High Performance Mode (Straight edges, No shadows)
+        'phy_solver': 'barnesHut', 
+        'phy_gravity': -2000, 
+        'phy_central_gravity': 0.3,
+        'phy_spring_len': 100, 
+        'phy_spring_strength': 0.05,
+        'phy_damping': 0.09
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -131,42 +92,6 @@ def get_db_client():
 def get_workbook():
     client = get_db_client()
     return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
-
-# --- 설정 관리 ---
-def load_settings_from_db():
-    if st.session_state['settings_loaded']: return
-    wb = get_workbook()
-    if not wb: return
-    try:
-        try: ws = wb.worksheet("settings")
-        except: 
-            ws = wb.add_worksheet(title="settings", rows=20, cols=2)
-            ws.append_row(["key", "value"])
-            return
-        records = ws.get_all_records()
-        settings_map = {str(r['key']): str(r['value']) for r in records}
-        def safe_cast(val, type_func):
-            try: return str(val).strip().lower() == 'true' if type_func == bool else type_func(val)
-            except: return None
-        if 'phy_active' in settings_map: st.session_state['phy_active'] = safe_cast(settings_map['phy_active'], bool)
-        if 'phy_damping' in settings_map: st.session_state['phy_damping'] = safe_cast(settings_map['phy_damping'], float)
-        if 'phy_repulsion' in settings_map: st.session_state['phy_repulsion'] = safe_cast(settings_map['phy_repulsion'], int)
-        if 'phy_len' in settings_map: st.session_state['phy_len'] = safe_cast(settings_map['phy_len'], int)
-        if 'phy_overlap' in settings_map: st.session_state['phy_overlap'] = safe_cast(settings_map['phy_overlap'], bool)
-        st.session_state['settings_loaded'] = True
-    except: pass
-
-def save_setting_to_db(key, value):
-    wb = get_workbook()
-    if not wb: return
-    try:
-        ws = wb.worksheet("settings")
-        cell = ws.find(key)
-        if cell: ws.update_cell(cell.row, 2, str(value))
-        else: ws.append_row([key, str(value)])
-    except: pass
-
-load_settings_from_db()
 
 # --- 데이터 관리 ---
 def load_nodes():
@@ -267,15 +192,12 @@ def ai_process(text):
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
     except Exception as e: return {"success": False, "error": str(e)}
 
-FIXED_COLORS = { "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" }
-COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33"]
-
 def get_group_color(group_name):
-    if group_name in FIXED_COLORS: return FIXED_COLORS[group_name]
+    # Obsidian Color Palette
+    PALETTE = ["#FF0055", "#00FFC2", "#45A29E", "#9D00FF", "#FFE600", "#FF8800"]
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
-    return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
+    return PALETTE[hash_val % len(PALETTE)]
 
-def on_update_setting(key): save_setting_to_db(key, st.session_state[key])
 def act_add_ws(node_id):
     tid = str(node_id)
     if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
@@ -301,7 +223,7 @@ def act_trash(nid):
 if not st.session_state['nodes_db']: st.session_state['nodes_db'] = load_nodes()
 
 if not st.session_state['logged_in']:
-    st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1><br>", unsafe_allow_html=True)
+    st.markdown("<br><br><h1 style='text-align: center; color: #66fcf1;'>🔗 Obsidian Knowledge Center</h1><br>", unsafe_allow_html=True)
     _, c, _ = st.columns([1,1,1])
     with c:
         with st.form("login"):
@@ -314,227 +236,314 @@ if not st.session_state['logged_in']:
 else:
     left, main = st.columns([1.5, 4.5])
     
-    df = pd.DataFrame(st.session_state['nodes_db'])
-    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
-    if not df.empty:
-        df['id'] = df['id'].astype(str)
-        all_kw = []
-        for ks in df['keywords']: all_kw.extend(ks)
-        if all_kw:
-            kw_counts = pd.Series(all_kw).value_counts().reset_index()
-            kw_counts.columns = ['keyword', 'count']
-        node_degree = {r['id']:0 for _,r in df.iterrows()}
-        for i in range(len(df)):
-            for j in range(i+1, len(df)):
-                if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
-                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
-                    node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
+    # ----------------------------------------------------
+    # [LOGIC] GLOBAL vs LOCAL FILTERING
+    # ----------------------------------------------------
+    full_df = pd.DataFrame(st.session_state['nodes_db'])
+    display_df = full_df.copy()
+    
+    # [Step 2] 로컬 그래프 로직: 선택된 노드가 있다면 그 이웃만 필터링
+    is_local_view = (st.session_state['view_mode'] == 'Local Focus')
+    center_node_id = st.session_state.get('last_selection')
+    
+    if is_local_view and center_node_id and not full_df.empty:
+        # 1. 타겟 노드 찾기
+        target_node = full_df[full_df['id'] == center_node_id]
+        if not target_node.empty:
+            target_kws = set(target_node.iloc[0]['keywords'])
+            # 2. 이웃 찾기 (키워드를 공유하는 노드들)
+            neighbor_ids = []
+            for _, row in full_df.iterrows():
+                if row['id'] == center_node_id: continue
+                if set(row['keywords']) & target_kws:
+                    neighbor_ids.append(row['id'])
+            
+            # 3. DF 필터링 (타겟 + 이웃)
+            display_df = full_df[full_df['id'].isin(neighbor_ids + [center_node_id])]
 
+    # ----------------------------------------------------
     # [SIDEBAR]
+    # ----------------------------------------------------
     with left:
-        all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
-        options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
-        selected = st.multiselect("Search", options=options, default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else [], max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        st.markdown("<div class='tight-header'>🔍 Search</div>", unsafe_allow_html=True)
+        
+        # 키워드 검색
+        all_kws = []
+        if not full_df.empty:
+            for ks in full_df['keywords']: all_kws.extend(ks)
+        kw_counts = pd.Series(all_kws).value_counts().reset_index()
+        kw_counts.columns = ['keyword', 'count']
+        
+        options = [h for h in st.session_state['search_history'] if h in kw_counts['keyword'].tolist()] + kw_counts['keyword'].tolist()
+        selected = st.multiselect("Keywords", options=list(set(options)), default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] else [], max_selections=1, label_visibility="collapsed")
         
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
                 st.session_state['selected_keyword'] = selected[0]
-                if selected[0] in st.session_state['search_history']: st.session_state['search_history'].remove(selected[0])
-                st.session_state['search_history'].insert(0, selected[0])
                 st.rerun()
-        elif st.session_state['selected_keyword']: st.session_state['selected_keyword'] = None; st.rerun()
+        elif st.session_state['selected_keyword']:
+            st.session_state['selected_keyword'] = None; st.rerun()
 
-        c1, c2 = st.columns([0.65, 0.35]) 
-        with c1: st.markdown("<div class='tight-header'>🔑 Keywords</div>", unsafe_allow_html=True)
-        with c2: 
-            if st.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
-        
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
-        h_cols = st.columns([0.8, 3, 1.2])
-        h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
-        h_cols[1].markdown("<div class='list-header-row col-left'>Keyword</div>", unsafe_allow_html=True)
-        h_cols[2].markdown("<div class='list-header-row col-center'>Cnt</div>", unsafe_allow_html=True)
         
-        with st.container(height=600):
-            if not kw_counts.empty:
-                for i, row in enumerate(kw_counts.itertuples(), 1):
-                    kw = row.keyword
-                    act = "#00ADB5" if kw == st.session_state['selected_keyword'] else "#fff"
-                    rc = st.columns([0.8, 3, 1.2])
-                    rc[0].markdown(f"<div class='list-content-row col-center' style='color:{act}'>{i}</div>", unsafe_allow_html=True)
-                    if rc[1].button(kw, key=f"kbtn_{i}", use_container_width=True): st.session_state['selected_keyword'] = None if st.session_state['selected_keyword'] == kw else kw; st.rerun()
-                    rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
-                    st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
+        # [NEW] Obsidian Style Settings Panel
+        with st.expander("🛠️ Graph Settings", expanded=True):
+            # View Mode
+            st.caption("👁️ View Mode")
+            mode_col1, mode_col2 = st.columns(2)
+            if mode_col1.button("Global", type="primary" if st.session_state['view_mode']=="Global" else "secondary", use_container_width=True):
+                st.session_state['view_mode'] = "Global"; st.rerun()
+            if mode_col2.button("Local", type="primary" if st.session_state['view_mode']=="Local Focus" else "secondary", use_container_width=True):
+                st.session_state['view_mode'] = "Local Focus"; st.rerun()
 
+            # Performance Mode
+            st.divider()
+            st.caption("🚀 Performance")
+            st.session_state['perf_mode'] = st.checkbox("High Perf. Mode", value=st.session_state['perf_mode'], help="직선 엣지 사용 및 그림자 제거로 속도 향상")
+
+            # Physics (Barnes-Hut)
+            st.divider()
+            st.caption("⚛️ Physics (Barnes-Hut)")
+            st.session_state['phy_gravity'] = st.slider("Gravity (Repulsion)", -30000, -1000, st.session_state['phy_gravity'], step=500)
+            st.session_state['phy_central_gravity'] = st.slider("Central Gravity", 0.0, 1.0, st.session_state['phy_central_gravity'], step=0.1)
+            st.session_state['phy_spring_len'] = st.slider("Spring Length", 10, 300, st.session_state['phy_spring_len'], step=10)
+            st.session_state['phy_spring_strength'] = st.slider("Spring Strength", 0.0, 0.2, st.session_state['phy_spring_strength'], step=0.01)
+
+        # Keyword List
+        st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
+        st.markdown("##### 🔥 Top Keywords")
+        with st.container(height=300):
+            for i, row in kw_counts.head(20).iterrows():
+                kw = row.keyword
+                color = "#66fcf1" if kw == st.session_state['selected_keyword'] else "#888"
+                if st.button(f"{kw} ({row['count']})", key=f"kbtn_{i}", use_container_width=True):
+                    st.session_state['selected_keyword'] = kw if st.session_state['selected_keyword'] != kw else None
+                    st.rerun()
+
+    # ----------------------------------------------------
     # [MAIN]
+    # ----------------------------------------------------
     with main:
-        menu_cols = st.columns([5, 1, 1, 1, 1, 1])
-        menu_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
-        if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
-        if menu_cols[3].button("Add", key="nav_add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        if menu_cols[4].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
-        if menu_cols[5].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
+        # Nav Menu
+        m_cols = st.columns([4, 1, 1, 1, 1, 1])
+        m_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
+        if m_cols[1].button("Graph", key="n1"): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
+        if m_cols[2].button("List", key="n2"): st.session_state['menu_mode'] = "List View"; st.rerun()
+        if m_cols[3].button("Add", key="n3"): st.session_state['menu_mode'] = "Add Data"; st.rerun()
+        if m_cols[4].button("Trash", key="n4"): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
+        if m_cols[5].button("Out", key="n5"): st.session_state['logged_in'] = False; st.rerun()
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
 
+        # ------------------------------------------------
+        # 1. KNOWLEDGE GRAPH VIEW
+        # ------------------------------------------------
         if st.session_state['menu_mode'] == "Knowledge Graph":
-            c_g1, c_g2 = st.columns([8, 2])
-            with c_g2:
-                with st.expander("⚙️ 효과 설정", expanded=False):
-                    st.caption("🌊 물방울 물리 엔진")
-                    st.checkbox("💧 물방울 모드", value=st.session_state['phy_active'], key="phy_active", on_change=on_update_setting, args=("phy_active",))
-                    st.divider()
-                    st.slider("점성", 0.1, 1.0, value=st.session_state['phy_damping'], step=0.05, key="phy_damping", on_change=on_update_setting, args=("phy_damping",))
-                    st.slider("척력", -2000, -100, value=st.session_state['phy_repulsion'], step=100, key="phy_repulsion", on_change=on_update_setting, args=("phy_repulsion",))
-                    st.slider("간격", 50, 400, value=st.session_state['phy_len'], step=10, key="phy_len", on_change=on_update_setting, args=("phy_len",))
-                    st.checkbox("겹침 방지", value=st.session_state['phy_overlap'], key="phy_overlap", on_change=on_update_setting, args=("phy_overlap",))
+            
+            # Info Bar
+            st.info(f"📊 Displaying **{len(display_df)}** Nodes in **{st.session_state['view_mode']}** Mode")
 
+            # Graph Generation
             ag_nodes, final_edges = [], []
-            sel_kw = st.session_state['selected_keyword']
-            if not df.empty:
-                for _, r in df.iterrows():
+            node_degree = {}
+            
+            # [Optimization] Calculate edges only for display_df
+            if not display_df.empty:
+                display_df['id'] = display_df['id'].astype(str)
+                # Init degree
+                for nid in display_df['id']: node_degree[nid] = 0
+                
+                # Build Edges
+                ids = display_df['id'].tolist()
+                kws = display_df['keywords'].tolist()
+                
+                for i in range(len(ids)):
+                    for j in range(i+1, len(ids)):
+                        # Intersection of keywords
+                        shared = set(kws[i]) & set(kws[j])
+                        if shared:
+                            edge_width = 1
+                            edge_color = "#333" # Default Dark
+                            
+                            # Highlight if keyword selected
+                            if st.session_state['selected_keyword'] and st.session_state['selected_keyword'] in shared:
+                                edge_width = 3
+                                edge_color = "#66fcf1"
+                            
+                            # [Step 3] Performance Mode: 직선 vs 곡선
+                            smooth_opt = False if st.session_state['perf_mode'] else {'type': 'continuous'}
+                            
+                            final_edges.append(Edge(source=ids[i], target=ids[j], color=edge_color, width=edge_width, smooth=smooth_opt))
+                            node_degree[ids[i]] += 1
+                            node_degree[ids[j]] += 1
+                
+                # Build Nodes
+                for _, r in display_df.iterrows():
+                    nid = str(r['id'])
+                    # Visual properties
                     base_color = get_group_color(r['group'])
-                    sz = min(20 + node_degree.get(r['id'], 0)*5, 60)
-                    clr, fclr, bw, sc = base_color, "white", 1, base_color
-                    if sel_kw:
-                        if sel_kw in r['keywords']: clr, sz, fclr, bw, sc = "#00FF00", sz*1.5, "#FFFFFF", 4, "#FFFFFF"
-                        else: clr, fclr, sz, bw, sc = "#222", "#666", 15, 1, "#333"
-                    ag_nodes.append(Node(id=r['id'], label=r['label'], title=f"{r['label']}\n{r['keywords']}", size=sz, color=clr, font={'color':fclr}, borderWidth=bw, borderColor=sc))
-                for e in edges:
-                    e_w, e_c = 1, "#555"
-                    if sel_kw:
-                        src_k = set(df[df['id']==e.source]['keywords'].iloc[0]); tgt_k = set(df[df['id']==e.to]['keywords'].iloc[0])
-                        if sel_kw in src_k and sel_kw in tgt_k: e_w, e_c = 4, "#00FF00"
-                        else: e_c = "#222"
-                    final_edges.append(Edge(source=e.source, target=e.to, color=e_c, width=e_w))
+                    size = 15 + (node_degree.get(nid, 0) * 3)
+                    
+                    # Highlight selected node or keyword
+                    if nid == st.session_state['last_selection']:
+                        base_color = "#ffffff"
+                        size *= 1.2
+                    elif st.session_state['selected_keyword'] in r['keywords']:
+                        base_color = "#66fcf1"
+                    
+                    # [Step 3] Performance Mode: 그림자 제거
+                    shadow_opt = False if st.session_state['perf_mode'] else True
 
-            cfg = Config(width="100%", height=600, directed=False, nodeHighlightBehavior=True, highlightColor="#F7A7A6", collapsible=False, 
-                         node={'labelProperty':'label', 'renderLabel':True, 'font': {'color': 'white'}},
-                         interaction={'hover':True, 'navigationButtons':False, 'keyboard':False}, 
-                         backgroundColor="#000000")
-            cfg.physics = {
-                "enabled": True, "solver": "forceAtlas2Based",
-                "forceAtlas2Based": { "theta": 0.5, "gravitationalConstant": st.session_state['phy_repulsion'], "centralGravity": 0.01, "springConstant": 0.08, "springLength": st.session_state['phy_len'], "damping": st.session_state['phy_damping'], "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0 },
-                "stabilization": { "enabled": not st.session_state['phy_active'], "iterations": 1000 }
-            }
+                    ag_nodes.append(Node(
+                        id=nid, 
+                        label=r['label'], 
+                        title=f"{r['label']}\n{', '.join(r['keywords'])}",
+                        size=size, 
+                        color=base_color,
+                        font={'color': 'white', 'size': 14},
+                        shadow=shadow_opt
+                    ))
+
+            # [Step 1] Barnes-Hut Physics Config
+            cfg = Config(
+                width="100%", height=600, 
+                directed=False, 
+                nodeHighlightBehavior=True, 
+                highlightColor="#66fcf1",
+                collapsible=False,
+                backgroundColor="#0b0c10",
+                physics={
+                    "enabled": True,
+                    "solver": "barnesHut",
+                    "barnesHut": {
+                        "gravitationalConstant": st.session_state['phy_gravity'],
+                        "centralGravity": st.session_state['phy_central_gravity'],
+                        "springLength": st.session_state['phy_spring_len'],
+                        "springConstant": st.session_state['phy_spring_strength'],
+                        "damping": st.session_state['phy_damping'],
+                        "avoidOverlap": 0.2
+                    },
+                    "stabilization": {
+                        "enabled": True,
+                        "iterations": 150 # 초기 안정화 반복
+                    }
+                }
+            )
             
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
+            
+            # Handle Selection
             if sel and sel != st.session_state['last_selection']: 
-                st.session_state['last_selection'] = sel; act_add_ws(sel); st.rerun()
+                st.session_state['last_selection'] = sel
+                act_add_ws(sel)
+                st.rerun()
 
+            # Workspace (Edit Panel)
             wsn = st.session_state['workspace_nodes']
             if wsn:
-                wc1, wc2 = st.columns([8, 2])
-                wc1.markdown("#### 📑 Active Nodes (Edit Mode)")
-                if wc2.button("🧹 Clear All", use_container_width=True): act_clear_ws(); st.rerun()
-                w_cols = st.columns(3) 
-                for idx, n in enumerate(wsn):
-                    with w_cols[idx % 3]:
-                        with st.container(border=True):
-                            nl = st.text_input("Title", value=n['label'], key=f"l_{n['id']}")
-                            nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
-                            ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
-                            b1, b2, b3 = st.columns(3)
-                            if b1.button("💾", key=f"up_{n['id']}", use_container_width=True, help="Update"): act_update(n['id'], nl, ns, nk)
-                            if b2.button("🗑️", key=f"del_{n['id']}", use_container_width=True, help="Trash"): act_trash(n['id'])
-                            if b3.button("❌", key=f"cl_{n['id']}", use_container_width=True, help="Close"): act_close_ws(n['id']); st.rerun()
-
-        elif st.session_state['menu_mode'] == "List View":
-            if st.session_state['card_stack']:
-                st.markdown("### 🗂️ Active Stack")
-                stack_cols = st.columns(3)
-                for i, node_data in enumerate(st.session_state['card_stack']):
-                    with stack_cols[i % 3]:
-                        with st.container(border=True):
-                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
-                            st_c1.markdown(f"#### {node_data['label']}")
-                            # [핵심] 이모지 대신 텍스트 사용 & 중앙 정렬됨
-                            if st_c2.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True):
-                                st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
-                            if st_c3.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
-                            if st_c4.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True):
-                                st.session_state['card_stack'].pop(i); st.rerun()
-                            st.info(node_data['summary'])
-                            st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
+                st.markdown("#### 📝 Edit Node")
+                for n in wsn:
+                    with st.container(border=True):
+                        c1, c2 = st.columns([3, 1])
+                        nl = c1.text_input("Title", value=n['label'], key=f"l_{n['id']}")
+                        nk = c1.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
+                        ns = c1.text_area("Summary", value=n['summary'], height=80, key=f"s_{n['id']}")
+                        
+                        b1, b2, b3 = c2.columns(3)
+                        if b1.button("💾", key=f"sv_{n['id']}", use_container_width=True): act_update(n['id'], nl, ns, nk)
+                        if b2.button("🗑️", key=f"tr_{n['id']}", use_container_width=True): act_trash(n['id'])
+                        if b3.button("✖️", key=f"cl_{n['id']}", use_container_width=True): act_close_ws(n['id']); st.rerun()
 
-            filtered_df = df
-            if st.session_state['selected_keyword']:
-                filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
+        # ------------------------------------------------
+        # 2. LIST VIEW
+        # ------------------------------------------------
+        elif st.session_state['menu_mode'] == "List View":
+            st.markdown(f"### 📋 List ({len(display_df)} nodes)")
             
-            if not filtered_df.empty:
-                st.caption(f"Total: {len(filtered_df)} Nodes")
-                for _, row in filtered_df.iterrows():
-                    row_col1, row_col2 = st.columns([0.95, 0.05])
-                    with row_col1:
-                        list_label = f"**{row['label']}** :gray[| {', '.join(row['keywords'])}]"
-                        with st.expander(list_label, expanded=False):
-                            st.write(row['summary'])
-                            st.caption(f"Created: {row['timestamp']}")
-                    with row_col2:
-                        with st.popover("⋮"):
-                            # [핵심] 팝오버 메뉴 꽉 채우기 (Full Width)
-                            if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
-                                if row['id'] not in [n['id'] for n in st.session_state['card_stack']]:
-                                    st.session_state['card_stack'].append(row.to_dict()); st.rerun()
-                            if st.button("Edit", key=f"lv_e_{row['id']}", use_container_width=True):
-                                st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(row['id']); st.rerun()
-                            if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
-            else: st.info("No data found.")
+            # Card Stack
+            if st.session_state['card_stack']:
+                st.caption("Active Cards")
+                cols = st.columns(3)
+                for i, node in enumerate(st.session_state['card_stack']):
+                    with cols[i%3]:
+                        with st.container(border=True):
+                            st.markdown(f"**{node['label']}**")
+                            st.caption(node['timestamp'])
+                            if st.button("Close", key=f"cc_{i}"): 
+                                st.session_state['card_stack'].pop(i); st.rerun()
+            
+            st.divider()
+            
+            # Table List
+            for _, row in display_df.iterrows():
+                with st.container(border=True):
+                    c1, c2 = st.columns([8, 2])
+                    c1.markdown(f"**{row['label']}** :gray[{', '.join(row['keywords'])}]")
+                    c1.caption(row['summary'][:100] + "...")
+                    if c2.button("Edit", key=f"le_{row['id']}", use_container_width=True):
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.session_state['last_selection'] = row['id']
+                        act_add_ws(row['id'])
+                        st.rerun()
 
+        # ------------------------------------------------
+        # 3. ADD DATA (AI)
+        # ------------------------------------------------
         elif st.session_state['menu_mode'] == "Add Data":
-            st.info("AI Auto-Analysis Node Creator")
+            st.markdown("### 🤖 AI Analysis & Add")
             if not st.session_state['temp_analysis']:
                 ti = st.text_input("Title")
-                co = st.text_area("Content", height=200)
-                if st.button("🔍 AI Analyze", type="primary"):
-                    if ti and co:
-                        with st.spinner("Thinking..."):
-                            res = ai_process(co)
-                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
-                            st.rerun()
+                co = st.text_area("Content", height=300)
+                if st.button("Analyze", type="primary"):
+                    with st.spinner("Processing..."):
+                        res = ai_process(co)
+                        st.session_state['temp_analysis'] = { 
+                            "title": ti, "content": co, 
+                            "summary": res.get('summary',''), 
+                            "keywords": res.get('keywords',''), 
+                            "success": res['success']
+                        }
+                        st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.warning(f"{tmp['error']}") 
-                else: st.success("Analysis Complete!")
                 st.markdown(f"**Title:** {tmp['title']}")
-                n_sum = st.text_area("Summary", value=tmp['summary'])
-                n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                if st.button("💾 Save", type="primary", use_container_width=True):
-                    final_keywords = [k.strip() for k in n_kw.split(',')]
-                    group_name = final_keywords[0] if final_keywords else "General"
-                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
-                    if new_node_data:
-                        st.session_state['nodes_db'].append(new_node_data)
-                        st.session_state['temp_analysis'] = None
-                        st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-                    else: st.error("Save Error")
-                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
+                s_sum = st.text_area("Summary", value=tmp['summary'])
+                s_key = st.text_input("Keywords", value=tmp['keywords'])
+                
+                c1, c2 = st.columns(2)
+                if c1.button("Save", type="primary", use_container_width=True):
+                    k_list = [k.strip() for k in s_key.split(',')]
+                    grp = k_list[0] if k_list else "General"
+                    add_node(tmp['title'], grp, s_sum, k_list)
+                    st.session_state['temp_analysis'] = None
+                    st.success("Saved!")
+                    time.sleep(1)
+                    st.session_state['menu_mode'] = "Knowledge Graph"
+                    st.rerun()
+                if c2.button("Cancel", use_container_width=True):
+                    st.session_state['temp_analysis'] = None; st.rerun()
 
+        # ------------------------------------------------
+        # 4. TRASH CAN
+        # ------------------------------------------------
         elif st.session_state['menu_mode'] == "Trash Can":
-            st.markdown("### 🗑️ Trash Can (Recycle Bin)")
-            st.caption("삭제된 노드는 여기에 30일간 보관됩니다.")
+            st.markdown("### 🗑️ Trash Can")
             trash_data = load_trash()
             if trash_data:
-                now = datetime.now()
                 for row in trash_data:
                     with st.container(border=True):
-                        c1, c2, c3 = st.columns([7, 1.5, 1.5])
-                        del_date_str = str(row.get('deleted_at', ''))
-                        try:
-                            del_date = datetime.strptime(del_date_str, "%y-%m-%d %H:%M")
-                            days_left = 30 - (now - del_date).days
-                        except: days_left = 0
-                        c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
-                        c1.caption(f"Deleted: {del_date_str} (남은 기간: {days_left}일)")
-                        if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
-                            # [핵심 Fix] 복구 시 Session State에도 즉시 반영
+                        c1, c2, c3 = st.columns([6, 2, 2])
+                        c1.markdown(f"**{row['label']}**")
+                        c1.caption(f"Del: {row['deleted_at']}")
+                        if c2.button("Restore", key=f"r_{row['id']}", use_container_width=True):
                             restore_node(row)
                             st.session_state['nodes_db'].append({
-                                "id": str(row['id']), "label": row['label'], "group": row['group'], # group key check
-                                "summary": row['summary'], "keywords": str(row['keywords']).split(','), "timestamp": row['created_at']
+                                "id": str(row['id']), "label": row['label'], "group": row['group'],
+                                "summary": row['summary'], "keywords": str(row['keywords']).split(','), 
+                                "timestamp": row['created_at']
                             })
-                            st.success("Restored!"); time.sleep(0.5); st.rerun()
-                        if c3.button("🔥 Delete", key=f"per_del_{row['id']}", type="primary", use_container_width=True):
-                            permanent_delete(row['id']); st.warning("Permanently Deleted."); time.sleep(0.5); st.rerun()
-            else: st.info("휴지통이 비어있습니다.")
+                            st.rerun()
+                        if c3.button("Delete", key=f"pd_{row['id']}", type="primary", use_container_width=True):
+                            permanent_delete(row['id']); st.rerun()
+            else:
+                st.info("Trash is empty.")
