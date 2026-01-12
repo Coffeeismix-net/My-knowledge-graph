@@ -304,7 +304,6 @@ if not st.session_state['nodes_db']: st.session_state['nodes_db'] = load_nodes()
 try:
     from modules.stock_ui import render_stock_page
 except ImportError:
-    # 모듈이 아직 없는 경우 에러 방지
     render_stock_page = None
 
 if not st.session_state['logged_in']:
@@ -319,7 +318,6 @@ if not st.session_state['logged_in']:
                     st.session_state['logged_in'] = True; st.rerun()
                 else: st.error("Check ID/PW")
 else:
-    # [수정된 레이아웃] 1 : 4 비율 적용
     left, main = st.columns([1, 4])
     
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -376,8 +374,7 @@ else:
 
     # [MAIN]
     with main:
-        # Stock 버튼 추가 및 메뉴 컬럼 확장
-        menu_cols = st.columns([5, 1, 1, 1, 1, 1, 1]) # [수정] 7칸으로 확장
+        menu_cols = st.columns([5, 1, 1, 1, 1, 1, 1])
         menu_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
         if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
         if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
@@ -503,15 +500,23 @@ else:
                             st.rerun()
             else:
                 tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.warning(f"{tmp['error']}") 
+                if not tmp['success']: st.error(f"{tmp['error']}") 
                 else: st.success("Analysis Complete!")
-                st.markdown(f"**Title:** {tmp['title']}")
-                n_sum = st.text_area("Summary", value=tmp['summary'])
+                
+                # [수정된 리뷰 UI]
+                n_title = st.text_input("Title", value=tmp['title'])
+                
+                st.caption("Original Content")
+                st.text_area("Original Content", value=tmp['content'], height=150, disabled=True, label_visibility="collapsed")
+                
+                n_sum = st.text_area("AI Summary", value=tmp['summary'], height=100)
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
+                
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
                     group_name = final_keywords[0] if final_keywords else "General"
-                    new_node_data = add_node(tmp['title'], group_name, n_sum, final_keywords)
+                    # 제목 수정 반영
+                    new_node_data = add_node(n_title, group_name, n_sum, final_keywords)
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
                         st.session_state['temp_analysis'] = None
@@ -519,12 +524,9 @@ else:
                     else: st.error("Save Error")
                 if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
 
-        # [NEW] 기업 스터디 페이지 연결
         elif st.session_state['menu_mode'] == "Stock Analysis":
-            if render_stock_page:
-                render_stock_page()
-            else:
-                st.warning("⚠️ 'modules/stock_ui.py' 파일을 찾을 수 없습니다. 폴더 구조를 확인해주세요.")
+            if render_stock_page: render_stock_page()
+            else: st.warning("⚠️ 'modules/stock_ui.py' 파일을 찾을 수 없습니다.")
 
         elif st.session_state['menu_mode'] == "Trash Can":
             st.markdown("### 🗑️ Trash Can (Recycle Bin)")
@@ -545,7 +547,7 @@ else:
                         if c2.button("♻️ Restore", key=f"res_{row['id']}", use_container_width=True):
                             restore_node(row)
                             st.session_state['nodes_db'].append({
-                                "id": str(row['id']), "label": row['label'], "group": row['group'], # group key check
+                                "id": str(row['id']), "label": row['label'], "group": row['group'], 
                                 "summary": row['summary'], "keywords": str(row['keywords']).split(','), "timestamp": row['created_at']
                             })
                             st.success("Restored!"); time.sleep(0.5); st.rerun()
