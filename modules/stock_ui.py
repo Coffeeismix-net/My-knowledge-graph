@@ -49,9 +49,8 @@ def move_to_trash(doc_id):
         time.sleep(0.5)
         st.rerun()
 
-# [Helper] 기업 전체 삭제 (소속 문서 일괄 휴지통행)
+# [Helper] 기업 전체 삭제
 def delete_company_all(company_name):
-    # 1. 해당 기업 문서 찾기
     targets = [d for d in st.session_state['stock_db'] if d['company'] == company_name]
     
     if targets:
@@ -59,23 +58,24 @@ def delete_company_all(company_name):
         for doc in targets:
             doc['deleted_at'] = now_str
             st.session_state['stock_trash_db'].append(doc)
-            
-            # 보고 있던 문서라면 닫기
             if doc['id'] in st.session_state.get('selected_doc_ids', []):
                 st.session_state['selected_doc_ids'].remove(doc['id'])
 
-        # 2. 원본 DB에서 제거
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
-        
-        st.toast(f"🗑️ '{company_name}' 및 관련 문서 {len(targets)}건이 삭제되었습니다.")
+        st.toast(f"🗑️ '{company_name}' 관련 문서가 삭제되었습니다.")
     else:
         st.toast(f"삭제할 문서가 없습니다.")
-        
+    
     time.sleep(0.5)
     st.rerun()
 
 def render_stock_page():
     init_stock_db()
+    
+    # [핵심 수정] 세션 상태 초기화를 가장 먼저 수행하여 KeyError 방지
+    if 'selected_doc_ids' not in st.session_state: 
+        st.session_state['selected_doc_ids'] = []
+    
     st.markdown(get_common_style(), unsafe_allow_html=True)
     
     # [CSS 스타일 정의]
@@ -85,7 +85,6 @@ def render_stock_page():
         .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; }
         .stQuill { background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px; }
         
-        /* 리스트 내부 문서 버튼 좌측 정렬 */
         div[data-testid="column"] button[kind="secondary"] {
             justify-content: flex-start !important;
             text-align: left !important;
@@ -96,7 +95,6 @@ def render_stock_page():
             text-align: left !important;
         }
 
-        /* 팝오버 버튼 스타일 */
         div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
         div[data-testid="stPopover"] > button:hover { color: white !important; }
     </style>
@@ -206,6 +204,7 @@ def render_stock_page():
         search_query = st.session_state.get("stock_search_query", "")
         st.divider()
 
+        # [안전장치] 초기화된 세션 변수 사용
         is_viewer_open = len(st.session_state['selected_doc_ids']) > 0
         if is_viewer_open:
             col_left, col_right = st.columns([1, 2.5]) 
@@ -220,7 +219,7 @@ def render_stock_page():
                     if search_query and (search_query not in co_row['company']):
                         continue
                     
-                    # [레이아웃 수정] 기업 리스트와 삭제 버튼을 한 줄에 배치 (9:1)
+                    # [레이아웃] 기업 Expander(9) | 기업 삭제 버튼(1)
                     c_exp, c_del = st.columns([9, 1])
                     
                     with c_exp:
@@ -230,7 +229,6 @@ def render_stock_page():
 
                             sub_docs = df[df['company'] == co_row['company']]
                             for _, doc in sub_docs.iterrows():
-                                # 문서 아이템: 제목(5.5) | 정보(3.5) | 메뉴(1)
                                 r_c1, r_c2, r_c3 = st.columns([5.5, 3.5, 1])
                                 
                                 with r_c1:
@@ -255,8 +253,7 @@ def render_stock_page():
                                             move_to_trash(doc['id'])
                     
                     with c_del:
-                        # [기업 삭제 버튼]
-                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 및 하위 문서 전체 삭제", use_container_width=True):
+                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 전체 삭제", use_container_width=True):
                              delete_company_all(co_row['company'])
 
         # [우측] 뷰어
