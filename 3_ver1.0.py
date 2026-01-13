@@ -374,15 +374,49 @@ else:
 
     # [MAIN]
     with main:
-        menu_cols = st.columns([5, 1, 1, 1, 1, 1, 1])
-        menu_cols[0].markdown(f"<div class='tight-header'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
-        if menu_cols[1].button("Graph", key="nav_graph", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-        if menu_cols[2].button("List", key="nav_list", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
-        if menu_cols[3].button("Add", key="nav_add", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
-        if menu_cols[4].button("Stock", key="nav_stock", use_container_width=True): st.session_state['menu_mode'] = "Stock Analysis"; st.rerun()
-        if menu_cols[5].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
-        if menu_cols[6].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
+        # [메뉴 리팩토링] Popover를 이용한 계층형 메뉴
+        menu_cols = st.columns([2, 2, 1, 1, 6]) # 비율 조정 (Node, Stock, Trash, Out, 여백)
+        
+        # 1. Node 메뉴 (Graph, List, Add)
+        with menu_cols[0]:
+            with st.popover("Node", use_container_width=True):
+                if st.button("Graph", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Knowledge Graph"
+                    st.rerun()
+                if st.button("List", use_container_width=True): 
+                    st.session_state['menu_mode'] = "List View"
+                    st.rerun()
+                if st.button("Add", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Add Data"
+                    st.rerun()
+        
+        # 2. Stock 메뉴 (List, Add)
+        with menu_cols[1]:
+            with st.popover("Stock", use_container_width=True):
+                if st.button("List", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Stock Analysis"
+                    st.session_state['stock_view_mode'] = "list" # 리스트 보기 모드
+                    st.rerun()
+                if st.button("Add", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Stock Analysis"
+                    st.session_state['stock_view_mode'] = "add" # 문서 추가 모드
+                    st.session_state['edit_target_id'] = None
+                    st.rerun()
+
+        # 3. Trash
+        if menu_cols[2].button("Trash", use_container_width=True): 
+            st.session_state['menu_mode'] = "Trash Can"
+            st.rerun()
+            
+        # 4. Out
+        if menu_cols[3].button("Out", use_container_width=True): 
+            st.session_state['logged_in'] = False
+            st.rerun()
+
+        # 현재 메뉴 표시 (헤더)
+        st.markdown(f"<div class='tight-header' style='text-align: right;'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
+
 
         if st.session_state['menu_mode'] == "Knowledge Graph":
             c_g1, c_g2 = st.columns([8, 2])
