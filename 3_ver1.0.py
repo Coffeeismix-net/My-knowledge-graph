@@ -318,7 +318,7 @@ if not st.session_state['logged_in']:
                     st.session_state['logged_in'] = True; st.rerun()
                 else: st.error("Check ID/PW")
 else:
-    left, main = st.columns([1, 4])
+    left, main = st.columns([0.8, 5.2])
     
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges, kw_counts = {}, [], pd.DataFrame()
