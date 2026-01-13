@@ -33,11 +33,11 @@ st.markdown("""
     .stMultiSelect div[data-baseweb="select"] > div { background-color: #111 !important; border-color: #333 !important; color: white !important; }
     .stMultiSelect div[data-baseweb="tag"] { background-color: #00ADB5 !important; color: black !important; }
     
-    /* [5] 고스트 버튼 & 강제 중앙 정렬 (텍스트 기준) */
+    /* [5] 핵심: 메뉴 및 버튼 스타일 (투명 배경 + 흰색 글자) */
     div.stButton > button { 
         background-color: transparent !important; 
         border: 1px solid transparent !important; 
-        color: #fff !important; 
+        color: #fff !important; /* 글자색 흰색 강제 */
         width: 100%; 
         height: auto;
         min-height: 38px;
@@ -50,12 +50,13 @@ st.markdown("""
         line-height: 1 !important;
     }
     
-    /* 내부 텍스트 컨테이너 강제 정렬 */
+    /* 버튼 내부 텍스트 정렬 */
     div.stButton > button p {
         width: 100% !important;
         text-align: center !important;
         margin: 0 !important;
         padding: 0 !important;
+        color: #ffffff !important;
     }
     div.stButton > button div {
         display: flex !important;
@@ -64,15 +65,18 @@ st.markdown("""
         width: 100% !important;
     }
 
-    /* Hover 효과 */
+    /* Hover 효과 (마우스 올렸을 때) */
     div.stButton > button:hover { 
         background-color: #222 !important; 
         border: 1px solid #444 !important; 
-        color: #00ADB5 !important; 
+        color: #00ADB5 !important; /* 포인트 컬러 */
         border-radius: 8px;
     }
+    div.stButton > button:hover p {
+        color: #00ADB5 !important;
+    }
     
-    /* Primary 버튼은 눈에 띄게 */
+    /* Primary 버튼 (저장 등) */
     div.stButton > button[kind="primary"] { 
         background-color: #E03131 !important; 
         border: none !important; 
@@ -80,7 +84,7 @@ st.markdown("""
     }
     div.stButton > button[kind="primary"]:hover { background-color: #c92a2a !important; }
     
-    /* [6] 헤더 스타일 */
+    /* [6] 헤더 및 리스트 스타일 */
     .list-header-row { display: flex; align-items: center; height: 35px; font-weight: bold; color: #888; font-size: 0.85rem; }
     .list-content-row { display: flex; align-items: center; height: 46px; }
     .col-center { justify-content: center; width: 100%; display: flex; }
@@ -97,6 +101,13 @@ st.markdown("""
         border: 0;
         border-top: 1px solid #333;
     }
+    
+    /* 팝오버 버튼 스타일 보정 */
+    div[data-testid="stPopover"] > button {
+        background-color: transparent !important;
+        border: 1px solid transparent !important;
+        color: white !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,7 +119,7 @@ def init_session_state():
         'logged_in': False, 'menu_mode': "Knowledge Graph", 'nodes_db': [], 'workspace_nodes': [],
         'selected_keyword': None, 'temp_analysis': None, 'search_history': [], 'last_selection': None, 'card_stack': [],
         'phy_active': True, 'phy_damping': 0.9, 'phy_repulsion': -1000, 'phy_len': 200, 'phy_overlap': True,
-        'settings_loaded': False
+        'settings_loaded': False, 'stock_view_mode': 'list'
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -318,6 +329,7 @@ if not st.session_state['logged_in']:
                     st.session_state['logged_in'] = True; st.rerun()
                 else: st.error("Check ID/PW")
 else:
+    # [수정] 좌측 비율을 0.8 : 5.2 정도로 하여 키워드 영역 축소
     left, main = st.columns([0.8, 5.2])
     
     df = pd.DataFrame(st.session_state['nodes_db'])
@@ -340,7 +352,7 @@ else:
     with left:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
-        selected = st.multiselect("Search", options=options, default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else [], max_selections=1, placeholder="🔍 Select keyword...", label_visibility="collapsed")
+        selected = st.multiselect("Search", options=options, default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else [], max_selections=1, placeholder="🔍 Select...", label_visibility="collapsed")
         
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
@@ -351,15 +363,11 @@ else:
         elif st.session_state['selected_keyword']: st.session_state['selected_keyword'] = None; st.rerun()
 
         c1, c2 = st.columns([0.65, 0.35]) 
-        with c1: st.markdown("<div class='tight-header'>🔑 Keywords</div>", unsafe_allow_html=True)
+        with c1: st.markdown("<div class='tight-header'>🔑 Key</div>", unsafe_allow_html=True)
         with c2: 
             if st.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
         
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
-        h_cols = st.columns([0.8, 3, 1.2])
-        h_cols[0].markdown("<div class='list-header-row col-center'>No.</div>", unsafe_allow_html=True)
-        h_cols[1].markdown("<div class='list-header-row col-left'>Keyword</div>", unsafe_allow_html=True)
-        h_cols[2].markdown("<div class='list-header-row col-center'>Cnt</div>", unsafe_allow_html=True)
         
         with st.container(height=600):
             if not kw_counts.empty:
@@ -374,49 +382,49 @@ else:
 
     # [MAIN]
     with main:
-        # [메뉴 리팩토링] Popover를 이용한 계층형 메뉴
-        menu_cols = st.columns([2, 2, 1, 1, 6]) # 비율 조정 (Node, Stock, Trash, Out, 여백)
+        # [메뉴 리팩토링 & 우측 정렬] 
+        # 비율: 여백(6) | Node(1) | Stock(1) | Trash(1) | Out(1)
+        menu_cols = st.columns([6, 1, 1, 1, 1]) 
         
         # 1. Node 메뉴 (Graph, List, Add)
-        with menu_cols[0]:
+        with menu_cols[1]:
             with st.popover("Node", use_container_width=True):
-                if st.button("Graph", use_container_width=True): 
+                if st.button("Graph", key="nav_node_graph", use_container_width=True): 
                     st.session_state['menu_mode'] = "Knowledge Graph"
                     st.rerun()
-                if st.button("List", use_container_width=True): 
+                if st.button("List", key="nav_node_list", use_container_width=True): 
                     st.session_state['menu_mode'] = "List View"
                     st.rerun()
-                if st.button("Add", use_container_width=True): 
+                if st.button("Add", key="nav_node_add", use_container_width=True): 
                     st.session_state['menu_mode'] = "Add Data"
                     st.rerun()
         
         # 2. Stock 메뉴 (List, Add)
-        with menu_cols[1]:
+        with menu_cols[2]:
             with st.popover("Stock", use_container_width=True):
-                if st.button("List", use_container_width=True): 
+                if st.button("List", key="nav_stock_list", use_container_width=True): 
                     st.session_state['menu_mode'] = "Stock Analysis"
-                    st.session_state['stock_view_mode'] = "list" # 리스트 보기 모드
+                    st.session_state['stock_view_mode'] = "list"
                     st.rerun()
-                if st.button("Add", use_container_width=True): 
+                if st.button("Add", key="nav_stock_add", use_container_width=True): 
                     st.session_state['menu_mode'] = "Stock Analysis"
-                    st.session_state['stock_view_mode'] = "add" # 문서 추가 모드
+                    st.session_state['stock_view_mode'] = "add"
                     st.session_state['edit_target_id'] = None
                     st.rerun()
 
         # 3. Trash
-        if menu_cols[2].button("Trash", use_container_width=True): 
+        if menu_cols[3].button("Trash", key="nav_trash", use_container_width=True): 
             st.session_state['menu_mode'] = "Trash Can"
             st.rerun()
             
         # 4. Out
-        if menu_cols[3].button("Out", use_container_width=True): 
+        if menu_cols[4].button("Out", key="nav_out", use_container_width=True): 
             st.session_state['logged_in'] = False
             st.rerun()
 
-        # 현재 메뉴 표시 (헤더)
+        # 현재 메뉴 표시 (헤더) - 우측 정렬
         st.markdown(f"<div class='tight-header' style='text-align: right;'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
-
 
         if st.session_state['menu_mode'] == "Knowledge Graph":
             c_g1, c_g2 = st.columns([8, 2])
@@ -503,6 +511,12 @@ else:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
+                # [정렬 로직 추가] 날짜 최신순
+                try:
+                    filtered_df['sort_dt'] = pd.to_datetime(filtered_df['timestamp'], format="%y-%m-%d %H:%M", errors='coerce')
+                    filtered_df = filtered_df.sort_values(by='sort_dt', ascending=False)
+                except Exception: pass
+
                 st.caption(f"Total: {len(filtered_df)} Nodes")
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
@@ -537,19 +551,15 @@ else:
                 if not tmp['success']: st.error(f"{tmp['error']}") 
                 else: st.success("Analysis Complete!")
                 
-                # [수정된 리뷰 UI]
                 n_title = st.text_input("Title", value=tmp['title'])
-                
                 st.caption("Original Content")
                 st.text_area("Original Content", value=tmp['content'], height=150, disabled=True, label_visibility="collapsed")
-                
                 n_sum = st.text_area("AI Summary", value=tmp['summary'], height=100)
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
                 
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
                     group_name = final_keywords[0] if final_keywords else "General"
-                    # 제목 수정 반영
                     new_node_data = add_node(n_title, group_name, n_sum, final_keywords)
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
