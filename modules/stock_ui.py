@@ -34,7 +34,7 @@ def init_stock_db():
     if 'stock_trash_db' not in st.session_state:
         st.session_state['stock_trash_db'] = []
 
-# [Helper] 문서 삭제
+# [Helper] 개별 문서 삭제
 def move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
@@ -49,6 +49,31 @@ def move_to_trash(doc_id):
         time.sleep(0.5)
         st.rerun()
 
+# [Helper] 기업 전체 삭제 (소속 문서 일괄 휴지통행)
+def delete_company_all(company_name):
+    # 1. 해당 기업 문서 찾기
+    targets = [d for d in st.session_state['stock_db'] if d['company'] == company_name]
+    
+    if targets:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        for doc in targets:
+            doc['deleted_at'] = now_str
+            st.session_state['stock_trash_db'].append(doc)
+            
+            # 보고 있던 문서라면 닫기
+            if doc['id'] in st.session_state.get('selected_doc_ids', []):
+                st.session_state['selected_doc_ids'].remove(doc['id'])
+
+        # 2. 원본 DB에서 제거
+        st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
+        
+        st.toast(f"🗑️ '{company_name}' 및 관련 문서 {len(targets)}건이 삭제되었습니다.")
+    else:
+        st.toast(f"삭제할 문서가 없습니다.")
+        
+    time.sleep(0.5)
+    st.rerun()
+
 def render_stock_page():
     init_stock_db()
     st.markdown(get_common_style(), unsafe_allow_html=True)
@@ -56,20 +81,16 @@ def render_stock_page():
     # [CSS 스타일 정의]
     st.markdown("""
     <style>
-        /* 태그 스타일 */
         .doc-tag { background-color: #222; color: #aaa; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-right: 4px; border: 1px solid #444; }
         .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; }
-        
-        /* Quill 에디터 */
         .stQuill { background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px; }
         
-        /* [핵심] 리스트 버튼(제목) 좌측 정렬 강제 */
-        /* Streamlit 버튼은 기본적으로 중앙 정렬이므로 이를 flex-start로 변경 */
+        /* 리스트 내부 문서 버튼 좌측 정렬 */
         div[data-testid="column"] button[kind="secondary"] {
             justify-content: flex-start !important;
             text-align: left !important;
             padding-left: 0px !important;
-            border: none !important; /* 테두리 제거로 텍스트처럼 보이게 */
+            border: none !important;
         }
         div[data-testid="column"] button[kind="secondary"] p {
             text-align: left !important;
@@ -87,7 +108,6 @@ def render_stock_page():
     # Auto-complete Data
     all_companies = []
     all_keywords_set = set()
-    
     grouped = pd.DataFrame()
     
     if not df.empty:
@@ -115,9 +135,6 @@ def render_stock_page():
     # [CASE A] 에디터 모드 (Add / Edit)
     # ==========================================
     if is_editor_mode:
-        # [수정사항] "목록으로 돌아가기" 버튼 삭제됨
-        
-        # 데이터 로드
         target_id = st.session_state.get('edit_target_id')
         if target_id:
             edit_data = next((d for d in st.session_state['stock_db'] if d['id'] == target_id), None)
@@ -202,41 +219,45 @@ def render_stock_page():
                 for _, co_row in grouped.iterrows():
                     if search_query and (search_query not in co_row['company']):
                         continue
+                    
+                    # [레이아웃 수정] 기업 리스트와 삭제 버튼을 한 줄에 배치 (9:1)
+                    c_exp, c_del = st.columns([9, 1])
+                    
+                    with c_exp:
+                        with st.expander(f"🏢 {co_row['company']}", expanded=False):
+                            st.markdown(f"Key: {' '.join([f'`{k}`' for k in co_row['keywords']])}")
+                            st.markdown("<hr style='margin: 5px 0; border-color: #444;'>", unsafe_allow_html=True)
 
-                    with st.expander(f"🏢 {co_row['company']}", expanded=False):
-                        st.markdown(f"Key: {' '.join([f'`{k}`' for k in co_row['keywords']])}")
-                        st.markdown("<hr style='margin: 5px 0; border-color: #444;'>", unsafe_allow_html=True)
-
-                        sub_docs = df[df['company'] == co_row['company']]
-                        for _, doc in sub_docs.iterrows():
-                            # [핵심] 한 줄 레이아웃: 제목(5.5) | 정보(3.5) | 메뉴(1)
-                            r_c1, r_c2, r_c3 = st.columns([5.5, 3.5, 1])
-                            
-                            with r_c1:
-                                # 제목 버튼 (좌측 정렬 CSS 적용됨)
-                                doc_title = f"📄 {doc['title']}"
-                                if st.button(doc_title, key=f"open_{doc['id']}", use_container_width=True):
-                                    st.session_state['selected_doc_ids'] = [doc['id']]
-                                    st.session_state['stock_view_mode'] = 'view'
-                                    st.rerun()
-                            
-                            with r_c2:
-                                # 키워드 태그 + 날짜 (우측 정렬 느낌으로 배치)
-                                # Streamlit 컬럼 내에서 마크다운 정렬은 어려우므로 HTML div로 감쌈
-                                kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                                date_str = doc['created_at'].strftime('%y.%m.%d')
-                                # margin-top으로 버튼 높이와 시각적 라인 맞춤
-                                st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{kws_html}<span class='date-label'>{date_str}</span></div>", unsafe_allow_html=True)
-
-                            with r_c3:
-                                # 팝오버 메뉴
-                                with st.popover("⋮", use_container_width=True):
-                                    if st.button("Edit", key=f"edit_{doc['id']}", use_container_width=True):
-                                        st.session_state['stock_view_mode'] = 'edit'
-                                        st.session_state['edit_target_id'] = doc['id']
+                            sub_docs = df[df['company'] == co_row['company']]
+                            for _, doc in sub_docs.iterrows():
+                                # 문서 아이템: 제목(5.5) | 정보(3.5) | 메뉴(1)
+                                r_c1, r_c2, r_c3 = st.columns([5.5, 3.5, 1])
+                                
+                                with r_c1:
+                                    doc_title = f"📄 {doc['title']}"
+                                    if st.button(doc_title, key=f"open_{doc['id']}", use_container_width=True):
+                                        st.session_state['selected_doc_ids'] = [doc['id']]
+                                        st.session_state['stock_view_mode'] = 'view'
                                         st.rerun()
-                                    if st.button("Trash", key=f"del_{doc['id']}", use_container_width=True):
-                                        move_to_trash(doc['id'])
+                                
+                                with r_c2:
+                                    kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
+                                    date_str = doc['created_at'].strftime('%y.%m.%d')
+                                    st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{kws_html}<span class='date-label'>{date_str}</span></div>", unsafe_allow_html=True)
+
+                                with r_c3:
+                                    with st.popover("⋮", use_container_width=True):
+                                        if st.button("Edit", key=f"edit_{doc['id']}", use_container_width=True):
+                                            st.session_state['stock_view_mode'] = 'edit'
+                                            st.session_state['edit_target_id'] = doc['id']
+                                            st.rerun()
+                                        if st.button("Trash", key=f"del_{doc['id']}", use_container_width=True):
+                                            move_to_trash(doc['id'])
+                    
+                    with c_del:
+                        # [기업 삭제 버튼]
+                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 및 하위 문서 전체 삭제", use_container_width=True):
+                             delete_company_all(co_row['company'])
 
         # [우측] 뷰어
         if is_viewer_open and col_right:
