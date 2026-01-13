@@ -66,23 +66,16 @@ def render_stock_page():
         .date-label {
             color: #666; font-size: 0.75rem; margin-left: 5px;
         }
-        
-        /* Quill 에디터 스타일 */
         .stQuill { 
             background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px;
         }
-
-        /* [버튼 스타일 정교화] */
-        /* 1. 제목 버튼 (왼쪽 정렬) */
+        /* 버튼 스타일 정교화 */
         button[kind="secondary"] p {
             text-align: left !important;
             padding-left: 5px !important;
         }
-        
-        /* 2. 아이콘 버튼 (중앙 정렬 & 패딩 축소) */
-        /* 아이콘 버튼은 텍스트 길이가 짧으므로 이를 이용해 구분하거나, 특정 컬럼 내 버튼을 타겟팅 */
         div[data-testid="column"] button[kind="secondary"] {
-            padding: 0px 5px !important; /* 좌우 패딩을 줄여서 아이콘이 잘리지 않게 함 */
+            padding: 0px 5px !important;
             min-width: 0px !important;
         }
     </style>
@@ -93,14 +86,21 @@ def render_stock_page():
     grouped = pd.DataFrame()
     
     if not df.empty:
+        # 날짜 변환 및 문서 최신순 정렬
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
         df = df.sort_values(by='created_at', ascending=False)
+        
+        # 기업별 집계
         grouped = df.groupby('company').agg({
-            'created_at': 'max',
+            'created_at': 'max', # 가장 최신 글 작성일 찾기
             'keywords': 'sum',
             'id': 'count'
         }).reset_index()
+        
+        # [핵심 수정] 기업 리스트도 최신 글 작성일 순으로 정렬
+        grouped = grouped.sort_values(by='created_at', ascending=False)
+        
         grouped['keywords'] = grouped['keywords'].apply(lambda x: list(set(x))[:5])
 
     # 3. 상단 컨트롤 바
@@ -121,7 +121,6 @@ def render_stock_page():
     is_editor_mode = st.session_state.get('stock_view_mode') in ['add', 'edit']
     is_viewer_open = len(st.session_state['selected_doc_ids']) > 0 or is_editor_mode
     
-    # [수정] 뷰어 열림 시 좌측 리스트 폭 더 좁게 (1 : 2.2 비율)
     if is_viewer_open:
         col_left, col_right = st.columns([1, 2.2]) 
     else:
@@ -142,40 +141,33 @@ def render_stock_page():
                     continue
 
                 with st.expander(f"🏢 {co_row['company']}", expanded=True):
-                    # 기업 대표 키워드
                     st.markdown(f"Key: {' '.join([f'`{k}`' for k in co_row['keywords']])}")
                     st.markdown("<hr style='margin: 5px 0; border-color: #444;'>", unsafe_allow_html=True)
 
                     sub_docs = df[df['company'] == co_row['company']]
                     
                     for _, doc in sub_docs.iterrows():
-                        # [레이아웃 개선] 
-                        # 제목(4.5) | 키워드&날짜(3.5) | 수정(0.6) | 삭제(0.6)
-                        # - 제목은 길게, 버튼은 타이트하게 잡았습니다.
                         r_c1, r_c2, r_c3, r_c4 = st.columns([4.5, 3.5, 0.6, 0.6])
                         
                         with r_c1:
-                            # 제목 버튼 (좌측 정렬 CSS 적용됨)
                             if st.button(f"📄 {doc['title']}", key=f"open_{doc['id']}", use_container_width=True):
                                 st.session_state['selected_doc_ids'] = [doc['id']]
                                 st.session_state['stock_view_mode'] = 'view'
                                 st.rerun()
                         
                         with r_c2:
-                            # 키워드와 날짜를 한 칸에 표시 (공간 절약)
-                            kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords'][:2]]) # 최대 2개만
+                            # [핵심 수정] 키워드 개수 제한 삭제 (doc['keywords'] 전체 표시)
+                            kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
                             date_str = doc['created_at'].strftime('%y.%m.%d')
                             st.markdown(f"{kws_html} <span class='date-label'>{date_str}</span>", unsafe_allow_html=True)
 
                         with r_c3:
-                            # 수정 버튼 (작게)
                             if st.button("✏️", key=f"edit_{doc['id']}", help="수정", use_container_width=True):
                                 st.session_state['stock_view_mode'] = 'edit'
                                 st.session_state['edit_target_id'] = doc['id']
                                 st.rerun()
                         
                         with r_c4:
-                            # 삭제 버튼 (작게)
                             if st.button("🗑️", key=f"del_{doc['id']}", help="삭제", use_container_width=True):
                                 move_to_trash(doc['id'])
 
@@ -254,18 +246,15 @@ def render_stock_page():
                         if doc:
                             with tabs[i]:
                                 with st.container(border=True):
-                                    # [수정] 뷰어 헤더에 닫기 버튼 배치
                                     h1, h2 = st.columns([9, 1])
                                     with h1:
                                         st.markdown(f"## {doc['title']}")
                                         st.caption(f"{doc['created_at']} | {doc['company']}")
                                     with h2:
-                                        # [닫기 버튼]
                                         if st.button("✖️", key=f"v_close_{doc['id']}", help="닫기"):
                                             st.session_state['selected_doc_ids'].remove(doc['id'])
                                             st.rerun()
                                     
-                                    # 키워드 (클릭 시 그래프 연동)
                                     kw_cols = st.columns(10)
                                     for k_idx, kw in enumerate(doc['keywords']):
                                         if k_idx < 10:
@@ -273,6 +262,5 @@ def render_stock_page():
                                                 st.session_state['menu_mode'] = "Knowledge Graph"
                                                 st.session_state['selected_keyword'] = kw
                                                 st.rerun()
-                                    
                                     st.divider()
                                     st.markdown(doc['content'], unsafe_allow_html=True)
