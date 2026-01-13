@@ -78,7 +78,7 @@ def render_stock_page():
     grouped = pd.DataFrame()
     
     if not df.empty:
-        df['created_at'] = pd.to_datetime(df['created_at'])
+        df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df = df.sort_values(by='created_at', ascending=False)
         grouped = df.groupby('company').agg({
             'created_at': 'max',
