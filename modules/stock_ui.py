@@ -53,21 +53,38 @@ def render_stock_page():
     init_stock_db()
     st.markdown(get_common_style(), unsafe_allow_html=True)
     
-    # [스타일 정의]
+    # [CSS 스타일 정의]
     st.markdown("""
     <style>
+        /* 태그 스타일 */
         .doc-tag { background-color: #222; color: #aaa; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-right: 4px; border: 1px solid #444; }
+        .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; }
+        
+        /* Quill 에디터 */
         .stQuill { background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px; }
-        div[data-testid="column"] button[kind="secondary"] p { text-align: left !important; padding-left: 0px !important; }
+        
+        /* [핵심] 리스트 버튼(제목) 좌측 정렬 강제 */
+        /* Streamlit 버튼은 기본적으로 중앙 정렬이므로 이를 flex-start로 변경 */
+        div[data-testid="column"] button[kind="secondary"] {
+            justify-content: flex-start !important;
+            text-align: left !important;
+            padding-left: 0px !important;
+            border: none !important; /* 테두리 제거로 텍스트처럼 보이게 */
+        }
+        div[data-testid="column"] button[kind="secondary"] p {
+            text-align: left !important;
+        }
+
+        /* 팝오버 버튼 스타일 */
         div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
         div[data-testid="stPopover"] > button:hover { color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
-    # 1. 데이터 준비 (DB 로드 및 정렬)
+    # 1. 데이터 준비
     df = pd.DataFrame(st.session_state['stock_db'])
     
-    # [Data for Auto-complete] 자동완성을 위한 고유 리스트 추출
+    # Auto-complete Data
     all_companies = []
     all_keywords_set = set()
     
@@ -78,7 +95,6 @@ def render_stock_page():
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
         df = df.sort_values(by='created_at', ascending=False)
         
-        # 자동완성용 데이터 추출
         all_companies = sorted(list(df['company'].unique()))
         for kw_list in df['keywords']:
             all_keywords_set.update(kw_list)
@@ -91,28 +107,21 @@ def render_stock_page():
     
     all_keywords_list = sorted(list(all_keywords_set))
 
-    # 2. 모드 확인 (작성 모드 vs 리스트 모드)
-    # stock_view_mode: 'list', 'view', 'add', 'edit'
+    # 2. 모드 확인
     current_mode = st.session_state.get('stock_view_mode', 'list')
     is_editor_mode = current_mode in ['add', 'edit']
 
     # ==========================================
-    # [CASE A] 에디터 모드 (Add / Edit) - 전체 화면 사용
+    # [CASE A] 에디터 모드 (Add / Edit)
     # ==========================================
     if is_editor_mode:
-        # [뒤로가기 버튼]
-        if st.button("⬅️ 목록으로 돌아가기", use_container_width=True):
-            st.session_state['stock_view_mode'] = 'list'
-            st.rerun()
+        # [수정사항] "목록으로 돌아가기" 버튼 삭제됨
         
-        st.divider()
-
-        # 데이터 로드 (수정 모드일 경우)
+        # 데이터 로드
         target_id = st.session_state.get('edit_target_id')
         if target_id:
             edit_data = next((d for d in st.session_state['stock_db'] if d['id'] == target_id), None)
-            if not edit_data: 
-                st.error("데이터를 찾을 수 없습니다."); st.stop()
+            if not edit_data: st.error("데이터 오류"); st.stop()
             def_comp, def_title = edit_data['company'], edit_data['title']
             def_kw_list, def_content = edit_data['keywords'], edit_data['content']
             mode_title = "기존 문서 수정"
@@ -122,85 +131,49 @@ def render_stock_page():
 
         st.subheader(f"📝 {mode_title}")
         
-        # --- [자동완성 입력 폼] ---
         c_input1, c_input2 = st.columns([1, 2])
-        
         with c_input1:
-            # 1. 기업명 (Selectbox + 직접 입력)
-            # 리스트에 없는 새 기업을 입력할 수 있도록 '➕ 직접 입력' 옵션 추가
             comp_options = ["➕ 직접 입력"] + all_companies
-            
-            # 기존 기업명이 옵션에 있으면 그걸 기본값으로, 없으면 '직접 입력'으로
-            if def_comp in all_companies:
-                sel_index = comp_options.index(def_comp)
-            else:
-                sel_index = 0 # 직접 입력
-                
+            sel_index = comp_options.index(def_comp) if def_comp in all_companies else 0
             selected_comp = st.selectbox("기업명 선택", options=comp_options, index=sel_index)
-            
-            if selected_comp == "➕ 직접 입력":
-                final_comp = st.text_input("기업명 입력", value=def_comp if def_comp not in all_companies else "", placeholder="새로운 기업명 입력")
-            else:
-                final_comp = selected_comp
+            final_comp = st.text_input("기업명 입력", value=def_comp if def_comp not in all_companies else "", placeholder="새 기업명") if selected_comp == "➕ 직접 입력" else selected_comp
 
         with c_input2:
-            st.text_input("제목", key="doc_title", value=def_title, placeholder="리포트 제목을 입력하세요")
+            st.text_input("제목", key="doc_title", value=def_title, placeholder="리포트 제목")
 
-        # 2. 키워드 (Multiselect + 추가 입력)
         st.markdown("###### 키워드 (Tags)")
         c_kw1, c_kw2 = st.columns([2, 1])
         with c_kw1:
-            # 기존 키워드들 중에서 선택 (자동완성 효과)
-            selected_kws = st.multiselect("기존 키워드 선택", options=all_keywords_list, default=[k for k in def_kw_list if k in all_keywords_list], placeholder="키워드 검색 및 선택...")
+            selected_kws = st.multiselect("기존 키워드 선택", options=all_keywords_list, default=[k for k in def_kw_list if k in all_keywords_list], placeholder="선택...")
         with c_kw2:
-            # 리스트에 없는 새로운 키워드 입력
-            manual_kws = st.text_input("신규 키워드 추가 (쉼표 구분)", placeholder="예: 성장주, 어닝서프라이즈")
+            manual_kws = st.text_input("신규 키워드 추가 (쉼표 구분)", placeholder="예: 성장주")
             
         st.markdown("###### 내용")
         if st_quill:
             in_content = st_quill(
                 value=def_content or "",
-                placeholder="내용을 작성하거나 붙여넣으세요...",
+                placeholder="내용 작성...",
                 html=True,
                 key=f"quill_{target_id or 'new'}"
             )
         else:
             in_content = st.text_area("내용", value=def_content or "", height=500)
 
-        # [저장 로직]
         if st.button("💾 저장하기", type="primary", use_container_width=True):
             if not final_comp or not st.session_state.doc_title:
                 st.warning("기업명과 제목은 필수입니다.")
             else:
-                # 키워드 합치기 (선택된 것 + 직접 입력한 것)
                 manual_kw_list = [k.strip() for k in manual_kws.split(',') if k.strip()]
-                final_kw_list = list(set(selected_kws + manual_kw_list)) # 중복 제거
-                
-                # 기존 문서 수정 시 보존해야 할 키워드가 있다면 로직 추가 가능 (현재는 덮어쓰기)
-                # 만약 사용자가 Multiselect에서 뺐다면 삭제 의도로 간주
-
+                final_kw_list = list(set(selected_kws + manual_kw_list))
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
                 if target_id:
                     for d in st.session_state['stock_db']:
                         if d['id'] == target_id:
-                            d.update({
-                                "company": final_comp, 
-                                "title": st.session_state.doc_title, 
-                                "content": in_content, 
-                                "keywords": final_kw_list,
-                                "created_at": now_str
-                            })
+                            d.update({ "company": final_comp, "title": st.session_state.doc_title, "content": in_content, "keywords": final_kw_list, "created_at": now_str })
                 else:
                     new_id = str(len(st.session_state['stock_db']) + 100)
-                    st.session_state['stock_db'].append({
-                        "id": new_id, 
-                        "company": final_comp, 
-                        "title": st.session_state.doc_title,
-                        "content": in_content, 
-                        "keywords": final_kw_list,
-                        "created_at": now_str
-                    })
+                    st.session_state['stock_db'].append({ "id": new_id, "company": final_comp, "title": st.session_state.doc_title, "content": in_content, "keywords": final_kw_list, "created_at": now_str })
                 
                 st.success("저장되었습니다!")
                 st.session_state['stock_view_mode'] = 'list'
@@ -209,16 +182,14 @@ def render_stock_page():
                 st.rerun()
 
     # ==========================================
-    # [CASE B] 리스트 / 뷰어 모드 (기존 레이아웃)
+    # [CASE B] 리스트 / 뷰어 모드
     # ==========================================
     else:
-        # 상단 검색바
         st.text_input("🔍 기업명/키워드 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
         search_query = st.session_state.get("stock_search_query", "")
         st.divider()
 
         is_viewer_open = len(st.session_state['selected_doc_ids']) > 0
-        
         if is_viewer_open:
             col_left, col_right = st.columns([1, 2.5]) 
         else:
@@ -238,19 +209,27 @@ def render_stock_page():
 
                         sub_docs = df[df['company'] == co_row['company']]
                         for _, doc in sub_docs.iterrows():
-                            r_c1, r_c2 = st.columns([0.9, 0.1])
+                            # [핵심] 한 줄 레이아웃: 제목(5.5) | 정보(3.5) | 메뉴(1)
+                            r_c1, r_c2, r_c3 = st.columns([5.5, 3.5, 1])
+                            
                             with r_c1:
+                                # 제목 버튼 (좌측 정렬 CSS 적용됨)
                                 doc_title = f"📄 {doc['title']}"
                                 if st.button(doc_title, key=f"open_{doc['id']}", use_container_width=True):
                                     st.session_state['selected_doc_ids'] = [doc['id']]
                                     st.session_state['stock_view_mode'] = 'view'
                                     st.rerun()
-                                date_str = doc['created_at'].strftime('%y.%m.%d')
-                                kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                                st.caption(f"{date_str} | {kws_html}", unsafe_allow_html=True)
-                                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
-
+                            
                             with r_c2:
+                                # 키워드 태그 + 날짜 (우측 정렬 느낌으로 배치)
+                                # Streamlit 컬럼 내에서 마크다운 정렬은 어려우므로 HTML div로 감쌈
+                                kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
+                                date_str = doc['created_at'].strftime('%y.%m.%d')
+                                # margin-top으로 버튼 높이와 시각적 라인 맞춤
+                                st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{kws_html}<span class='date-label'>{date_str}</span></div>", unsafe_allow_html=True)
+
+                            with r_c3:
+                                # 팝오버 메뉴
                                 with st.popover("⋮", use_container_width=True):
                                     if st.button("Edit", key=f"edit_{doc['id']}", use_container_width=True):
                                         st.session_state['stock_view_mode'] = 'edit'
