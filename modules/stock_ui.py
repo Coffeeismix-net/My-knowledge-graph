@@ -86,38 +86,30 @@ def render_stock_page():
     grouped = pd.DataFrame()
     
     if not df.empty:
-        # 날짜 변환 및 문서 최신순 정렬
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
         df = df.sort_values(by='created_at', ascending=False)
         
-        # 기업별 집계
         grouped = df.groupby('company').agg({
-            'created_at': 'max', # 가장 최신 글 작성일 찾기
+            'created_at': 'max', 
             'keywords': 'sum',
             'id': 'count'
         }).reset_index()
         
-        # [핵심 수정] 기업 리스트도 최신 글 작성일 순으로 정렬
         grouped = grouped.sort_values(by='created_at', ascending=False)
-        
         grouped['keywords'] = grouped['keywords'].apply(lambda x: list(set(x))[:5])
 
     # 3. 상단 컨트롤 바
-    c1, c2 = st.columns([6, 1])
-    with c1:
-        search_query = st.text_input("🔍 기업명/키워드 검색", placeholder="Search...", label_visibility="collapsed")
-    with c2:
-        if st.button("➕ 문서 추가", use_container_width=True):
-            st.session_state['stock_view_mode'] = 'add'
-            st.session_state['edit_target_id'] = None
-            st.rerun()
+    # [수정] 문서 추가 버튼을 삭제하고 검색창을 넓게 씀
+    st.text_input("🔍 기업명/키워드 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
+    search_query = st.session_state.get("stock_search_query", "")
 
     st.divider()
 
     # 4. 뷰 모드 관리
     if 'selected_doc_ids' not in st.session_state: st.session_state['selected_doc_ids'] = []
     
+    # [핵심] 메인 메뉴에서 stock_view_mode를 'add'로 설정하면 에디터가 열림
     is_editor_mode = st.session_state.get('stock_view_mode') in ['add', 'edit']
     is_viewer_open = len(st.session_state['selected_doc_ids']) > 0 or is_editor_mode
     
@@ -156,7 +148,6 @@ def render_stock_page():
                                 st.rerun()
                         
                         with r_c2:
-                            # [핵심 수정] 키워드 개수 제한 삭제 (doc['keywords'] 전체 표시)
                             kws_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
                             date_str = doc['created_at'].strftime('%y.%m.%d')
                             st.markdown(f"{kws_html} <span class='date-label'>{date_str}</span>", unsafe_allow_html=True)
