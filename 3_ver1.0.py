@@ -511,20 +511,40 @@ else:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                # [정렬 로직 추가] 날짜 최신순
+                # [정렬 수정] timestamp 문자열을 날짜 객체로 변환 후 내림차순 정렬
                 try:
+                    # timestamp 형식이 "25-12-10 00:00" (%y-%m-%d %H:%M) 라고 가정
                     filtered_df['sort_dt'] = pd.to_datetime(filtered_df['timestamp'], format="%y-%m-%d %H:%M", errors='coerce')
+                    # 변환 실패 시 현재 시간으로 대체 (정렬 에러 방지)
+                    filtered_df['sort_dt'] = filtered_df['sort_dt'].fillna(pd.Timestamp.now())
                     filtered_df = filtered_df.sort_values(by='sort_dt', ascending=False)
-                except Exception: pass
+                except Exception:
+                    pass # 날짜 포맷이 아예 다르면 기존 순서 유지
 
                 st.caption(f"Total: {len(filtered_df)} Nodes")
+                
+                # [리스트 출력]
                 for _, row in filtered_df.iterrows():
+                    # 레이아웃: 제목(날짜 포함) [0.9] | 메뉴 [0.1]
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
-                        list_label = f"**{row['label']}** :gray[| {', '.join(row['keywords'])}]"
-                        with st.expander(list_label, expanded=False):
+                        # 제목과 날짜를 양쪽 끝으로 배치하는 HTML 트릭 대신, Streamlit 컬럼 활용
+                        # 제목(Bold) | 키워드(Gray) ......... 날짜(Right)
+                        
+                        # expander 라벨 생성
+                        title_text = f"**{row['label']}** :gray[| {', '.join(row['keywords'])}]"
+                        # 날짜는 Expander 내부에 넣거나, Expander 라벨에 포함시키기에는 정렬이 어려움.
+                        # 따라서 제목 옆에 텍스트로 붙여줌.
+                        date_str = str(row['timestamp']).split()[0] # 날짜만 표시
+                        
+                        # Expander 라벨에 날짜를 우측 정렬처럼 보이게 공백이나 특수 문자 사용은 불안정함.
+                        # 깔끔하게: "제목 | 키워드 (날짜)" 형태로 표시
+                        final_label = f"**{row['label']}** :gray[| {', '.join(row['keywords'])}] :gray[({date_str})]"
+                        
+                        with st.expander(final_label, expanded=False):
                             st.write(row['summary'])
-                            st.caption(f"Created: {row['timestamp']}")
+                            st.caption(f"Full Timestamp: {row['timestamp']}")
+                            
                     with row_col2:
                         with st.popover("⋮"):
                             if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
