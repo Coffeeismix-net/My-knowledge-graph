@@ -81,34 +81,18 @@ def render_stock_page():
     # [CSS 스타일 정의]
     st.markdown("""
     <style>
-        /* [핵심 수정] 태그 줄바꿈 방지 (white-space: nowrap) */
         .doc-tag { 
-            background-color: #222; 
-            color: #aaa; 
-            padding: 2px 6px; 
-            border-radius: 4px; 
-            font-size: 0.7rem; 
-            margin-right: 4px; 
-            border: 1px solid #444;
-            white-space: nowrap;      /* 줄바꿈 금지 */
-            display: inline-block;    /* 블록 속성 유지 */
+            background-color: #222; color: #aaa; padding: 2px 6px; 
+            border-radius: 4px; font-size: 0.7rem; margin-right: 4px; border: 1px solid #444;
+            white-space: nowrap; display: inline-block;
         }
-        
         .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; white-space: nowrap; }
         .stQuill { background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px; }
         
-        /* 리스트 버튼 스타일 */
         div[data-testid="column"] button[kind="secondary"] {
-            justify-content: flex-start !important;
-            text-align: left !important;
-            padding-left: 0px !important;
-            border: none !important;
+            justify-content: flex-start !important; text-align: left !important; padding-left: 0px !important; border: none !important;
         }
-        div[data-testid="column"] button[kind="secondary"] p {
-            text-align: left !important;
-        }
-
-        /* 팝오버 스타일 */
+        div[data-testid="column"] button[kind="secondary"] p { text-align: left !important; }
         div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
         div[data-testid="stPopover"] > button:hover { color: white !important; }
     </style>
@@ -124,8 +108,18 @@ def render_stock_page():
     if not df.empty:
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
+        # [정렬] 최신순 정렬 (매우 중요)
         df = df.sort_values(by='created_at', ascending=False)
         
+        # [핵심 로직] 자동 선택 (Auto-select Most Recent)
+        # 선택된 게 없고 + 데이터가 있고 + 사용자가 방금 닫은 게 아니라면 -> 최신 문서 선택
+        if not st.session_state['selected_doc_ids'] and not st.session_state.get('doc_manually_closed', False):
+            most_recent_id = df.iloc[0]['id']
+            st.session_state['selected_doc_ids'] = [most_recent_id]
+        
+        # 만약 리스트 모드가 아닌 다른 모드로 갔다면 닫기 플래그 초기화 (다음에 돌아올 때 다시 자동선택 되도록)
+        # 여기서는 간단히 유지
+
         all_companies = sorted(list(df['company'].unique()))
         for kw_list in df['keywords']:
             all_keywords_set.update(kw_list)
@@ -143,7 +137,7 @@ def render_stock_page():
     is_editor_mode = current_mode in ['add', 'edit']
 
     # ==========================================
-    # [CASE A] 에디터 모드 (Add / Edit) - 전체 화면
+    # [CASE A] 에디터 모드 (Add / Edit)
     # ==========================================
     if is_editor_mode:
         target_id = st.session_state.get('edit_target_id')
@@ -180,13 +174,9 @@ def render_stock_page():
         st.caption("💡 표는 캡처 후 붙여넣기(Ctrl+V) 하세요.")
         
         toolbar_config = [
-            ['bold', 'italic', 'underline', 'strike'],
-            ['blockquote', 'code-block'],
-            [{'header': 1}, {'header': 2}],
-            [{'list': 'ordered'}, {'list': 'bullet'}],
-            [{'indent': '-1'}, {'indent': '+1'}],
-            ['link', 'image'],
-            ['clean']
+            ['bold', 'italic', 'underline', 'strike'], ['blockquote', 'code-block'],
+            [{'header': 1}, {'header': 2}], [{'list': 'ordered'}, {'list': 'bullet'}],
+            [{'indent': '-1'}, {'indent': '+1'}], ['link', 'image'], ['clean']
         ]
 
         if st_quill:
@@ -219,18 +209,21 @@ def render_stock_page():
                 st.success("저장되었습니다!")
                 st.session_state['stock_view_mode'] = 'list'
                 st.session_state['edit_target_id'] = None
+                
+                # 저장 후에는 자동 선택 플래그 초기화 (방금 저장한 글을 볼 수 있게 하거나, 리스트 최신글을 볼 수 있게)
+                if 'doc_manually_closed' in st.session_state:
+                    del st.session_state['doc_manually_closed']
+                    
                 time.sleep(0.5)
                 st.rerun()
 
     # ==========================================
-    # [CASE B] 리스트 / 뷰어 모드 (상하 배치)
+    # [CASE B] 리스트 / 뷰어 모드
     # ==========================================
     else:
-        # 1. 상단: 검색 및 리스트 (스크롤 가능한 컨테이너)
         st.text_input("🔍 기업명/키워드 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
         search_query = st.session_state.get("stock_search_query", "")
         
-        # [핵심] 리스트를 상단에 고정하고 스크롤바 생성 (높이 280px)
         with st.container(height=280):
             if not grouped.empty:
                 for _, co_row in grouped.iterrows():
@@ -238,7 +231,6 @@ def render_stock_page():
                         continue
                     
                     c_exp, c_del = st.columns([9.2, 0.8])
-                    
                     with c_exp:
                         with st.expander(f"🏢 {co_row['company']}", expanded=False):
                             st.markdown(f"Key: {' '.join([f'`{k}`' for k in co_row['keywords']])}")
@@ -253,9 +245,9 @@ def render_stock_page():
                                     if st.button(doc_title, key=f"open_{doc['id']}", use_container_width=True):
                                         st.session_state['selected_doc_ids'] = [doc['id']]
                                         st.session_state['stock_view_mode'] = 'view'
-                                        # rerun 하지 않음 (뷰어만 갱신되면 되는데, 리스트가 닫히는걸 방지하기 위해)
-                                        # 하지만 Streamlit 특성상 rerun은 필요함.
-                                        # 리스트 상단 고정이므로 rerun 되어도 뷰어는 아래에 뜸.
+                                        # 사용자가 직접 열었으므로 닫기 플래그 해제
+                                        if 'doc_manually_closed' in st.session_state:
+                                            del st.session_state['doc_manually_closed']
                                         st.rerun()
                                 
                                 with r_c2:
@@ -278,12 +270,10 @@ def render_stock_page():
             else:
                 st.caption("등록된 기업 문서가 없습니다.")
 
-        # 2. 하단: 문서 뷰어 (리스트 바로 아래에 표시)
-        st.divider() # 구분선
+        st.divider()
         
         sel_ids = st.session_state.get('selected_doc_ids', [])
         if sel_ids:
-            # 여러 개 선택 가능하지만 보통 1개
             for i, doc_id in enumerate(sel_ids):
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
@@ -293,8 +283,10 @@ def render_stock_page():
                             st.markdown(f"## {doc['title']}")
                             st.caption(f"{doc['created_at']} | {doc['company']}")
                         with h2:
+                            # [닫기 버튼] 누르면 플래그(doc_manually_closed) 설정 -> 자동 선택 방지
                             if st.button("✕", key=f"v_close_{doc['id']}", help="닫기"):
                                 st.session_state['selected_doc_ids'].remove(doc['id'])
+                                st.session_state['doc_manually_closed'] = True 
                                 st.rerun()
                         
                         kw_cols = st.columns(10)
