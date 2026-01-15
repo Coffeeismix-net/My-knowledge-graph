@@ -21,11 +21,28 @@ def get_db_client():
 
 def get_workbook():
     client = get_db_client()
-    # [주의] 기존에 쓰시던 스프레드시트 ID가 있다면 확인 필요
+    # [주의] 기존 시트 키가 맞는지 확인하세요
     return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
 
 # ==========================================
-# NODE CRUD (Create, Read, Update, Delete)
+# [NEW] SETTINGS MANAGER (이 부분이 누락되었었습니다)
+# ==========================================
+def save_setting_to_db(key, value):
+    wb = get_workbook()
+    if not wb: return
+    try:
+        try: ws = wb.worksheet("settings")
+        except: 
+            ws = wb.add_worksheet(title="settings", rows=20, cols=2)
+            ws.append_row(["key", "value"])
+        
+        cell = ws.find(key)
+        if cell: ws.update_cell(cell.row, 2, str(value))
+        else: ws.append_row([key, str(value)])
+    except: pass
+
+# ==========================================
+# NODE CRUD
 # ==========================================
 def load_nodes():
     wb = get_workbook()
