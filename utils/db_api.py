@@ -280,10 +280,28 @@ def strip_html(html_content):
     clean = re.compile('<.*?>')
     return re.sub(clean, '', html_content)
 
-def get_group_color(group_name):
-    if group_name in FIXED_COLORS: return FIXED_COLORS[group_name]
-    hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
-    return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
+# ==========================================
+# COLORS (Automatic Coloring)
+# ==========================================
+# [수정] 고정 색상(FIXED_COLORS) 삭제 -> 완전 자동화
+# 다양한 색상 팔레트 준비 (20색)
+COLOR_PALETTE = [
+    "#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600",
+    "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF",
+    "#33FFFF", "#FFFF33", "#FF5733", "#33FF57", "#3357FF",
+    "#A0522D", "#8A2BE2", "#5F9EA0", "#D2691E", "#FF7F50"
+]
 
-FIXED_COLORS = { "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" }
-COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33"]
+def get_group_color(group_name):
+    """
+    그룹 이름(문자열)을 입력받아, 항상 동일한 색상을 반환합니다.
+    (Deterministic Hashing)
+    """
+    if not group_name:
+        return "#888888" # 그룹이 없으면 회색
+        
+    # 문자열을 SHA-256 해시로 변환하여 숫자로 만듦
+    hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
+    
+    # 팔레트 개수만큼 나눈 나머지로 색상 선택 (무작위 같지만 항상 같은 색 보장)
+    return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
