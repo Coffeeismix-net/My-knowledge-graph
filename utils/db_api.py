@@ -6,6 +6,7 @@ import json
 import hashlib
 from datetime import datetime
 import uuid
+import re # [NEW] HTML 태그 제거용
 
 # ==========================================
 # GOOGLE SHEETS & DRIVE
@@ -15,23 +16,16 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 @st.cache_resource
 def get_db_client():
     try:
-        if "gcp_service_account" not in st.secrets:
-            st.error("Secrets에 'gcp_service_account' 정보가 없습니다.")
-            return None
+        if "gcp_service_account" not in st.secrets: return None
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
         return gspread.authorize(creds)
-    except Exception as e:
-        st.error(f"DB 연결 실패: {e}")
-        return None
+    except: return None
 
 def get_workbook():
     client = get_db_client()
-    # [주의] 스프레드시트 Key가 정확한지 확인하세요!
     try:
         return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
-    except Exception as e:
-        st.error(f"스프레드시트를 찾을 수 없습니다: {e}")
-        return None
+    except: return None
 
 # ==========================================
 # SETTINGS
@@ -44,11 +38,10 @@ def save_setting_to_db(key, value):
         except: 
             ws = wb.add_worksheet(title="settings", rows=20, cols=2)
             ws.append_row(["key", "value"])
-        
         cell = ws.find(key)
         if cell: ws.update_cell(cell.row, 2, str(value))
         else: ws.append_row([key, str(value)])
-    except Exception as e: print(f"Setting Save Error: {e}")
+    except: pass
 
 # ==========================================
 # NODE CRUD
@@ -68,9 +61,7 @@ def load_nodes():
                 "summary": row['summary'], "keywords": kws, "timestamp": ts
             })
         return nodes
-    except Exception as e:
-        st.error(f"노드 불러오기 실패: {e}")
-        return []
+    except: return []
 
 def add_node(label, group, summary, keywords):
     wb = get_workbook()
@@ -81,9 +72,7 @@ def add_node(label, group, summary, keywords):
         now_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         wb.sheet1.append_row([new_id, label, group, summary, kw_str, now_ts])
         return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
-    except Exception as e:
-        st.error(f"노드 추가 실패: {e}")
-        return None
+    except: return None
 
 def update_node(node_id, label, summary, keywords):
     wb = get_workbook()
@@ -97,7 +86,7 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 3, keywords[0] if keywords else "General")
             sheet.update_cell(r, 4, summary)
             sheet.update_cell(r, 5, ",".join(keywords))
-    except Exception as e: st.error(f"노드 수정 실패: {e}")
+    except: pass
 
 def move_to_trash(node_id, node_data):
     wb = get_workbook()
@@ -113,7 +102,7 @@ def move_to_trash(node_id, node_data):
         main_sheet = wb.sheet1
         cell = main_sheet.find(str(node_id))
         if cell: main_sheet.delete_rows(cell.row)
-    except Exception as e: st.error(f"삭제 실패: {e}")
+    except Exception as e: st.error(f"Error: {e}")
 
 def load_trash():
     wb = get_workbook()
@@ -139,7 +128,7 @@ def permanent_delete(node_id):
     except: pass
 
 # ==========================================
-# [STOCK CRUD] (에러 출력 추가)
+# STOCK CRUD
 # ==========================================
 def load_stocks():
     wb = get_workbook()
@@ -165,9 +154,7 @@ def load_stocks():
                 "created_at": str(row['created_at'])
             })
         return stocks
-    except Exception as e:
-        st.error(f"Stock 목록 로드 실패: {e}")
-        return []
+    except: return []
 
 def add_stock(company, title, content, keywords):
     wb = get_workbook()
@@ -176,17 +163,10 @@ def add_stock(company, title, content, keywords):
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        
         ws = wb.worksheet("stocks")
         ws.append_row([new_id, company, title, content, kw_str, now_str])
-        
-        return {
-            "id": new_id, "company": company, "title": title, 
-            "content": content, "keywords": keywords, "created_at": now_str
-        }
-    except Exception as e:
-        st.error(f"Stock 추가 실패: {e}")
-        return None
+        return {"id": new_id, "company": company, "title": title, "content": content, "keywords": keywords, "created_at": now_str}
+    except: return None
 
 def update_stock(doc_id, company, title, content, keywords):
     wb = get_workbook()
@@ -200,9 +180,8 @@ def update_stock(doc_id, company, title, content, keywords):
             ws.update_cell(r, 3, title)
             ws.update_cell(r, 4, content)
             ws.update_cell(r, 5, ",".join(keywords))
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            ws.update_cell(r, 6, now_str)
-    except Exception as e: st.error(f"Stock 수정 실패: {e}")
+            ws.update_cell(r, 6, datetime.now().strftime("%Y-%m-%d %H:%M"))
+    except: pass
 
 def move_stock_to_trash(doc_data):
     wb = get_workbook()
@@ -215,19 +194,42 @@ def move_stock_to_trash(doc_data):
         
         del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
         k_str = ",".join(doc_data['keywords'])
-        
-        trash_sheet.append_row([
-            doc_data['id'], doc_data['company'], doc_data['title'], 
-            doc_data['content'], k_str, doc_data['created_at'], del_time
-        ])
+        trash_sheet.append_row([doc_data['id'], doc_data['company'], doc_data['title'], doc_data['content'], k_str, doc_data['created_at'], del_time])
         
         ws = wb.worksheet("stocks")
         cell = ws.find(str(doc_data['id']))
         if cell: ws.delete_rows(cell.row)
-    except Exception as e: st.error(f"Stock 삭제 실패: {e}")
+    except: pass
+
+# [NEW] Stock 휴지통 로드
+def load_stock_trash():
+    wb = get_workbook()
+    if not wb: return []
+    try: return wb.worksheet("stock_trash").get_all_records()
+    except: return []
+
+# [NEW] Stock 복구
+def restore_stock(stock_row):
+    wb = get_workbook()
+    if not wb: return
+    try:
+        ws = wb.worksheet("stocks")
+        ws.append_row([stock_row['id'], stock_row['company'], stock_row['title'], stock_row['content'], stock_row['keywords'], stock_row['created_at']])
+        permanent_delete_stock(stock_row['id'])
+    except: pass
+
+# [NEW] Stock 영구 삭제
+def permanent_delete_stock(doc_id):
+    wb = get_workbook()
+    if not wb: return
+    try:
+        trash_sheet = wb.worksheet("stock_trash")
+        cell = trash_sheet.find(str(doc_id))
+        if cell: trash_sheet.delete_rows(cell.row)
+    except: pass
 
 # ==========================================
-# AI Helper
+# AI Helper & Util
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets: return {"success": False, "error": "Secrets Error"}
@@ -240,13 +242,16 @@ def ai_process(text):
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
     except Exception as e: return {"success": False, "error": str(e)}
 
-# ==========================================
-# COLORS
-# ==========================================
-FIXED_COLORS = { "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" }
-COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33"]
+def strip_html(html_content):
+    """HTML 태그를 제거하고 텍스트만 추출"""
+    if not html_content: return ""
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', html_content)
 
 def get_group_color(group_name):
     if group_name in FIXED_COLORS: return FIXED_COLORS[group_name]
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
+
+FIXED_COLORS = { "Antenna": "#FF0055", "Stock": "#00FFC2", "Tech": "#00ADB5", "Space": "#9D00FF", "Chip": "#FFE600", "Economy": "#FF8800", "General": "#888" }
+COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33"]
