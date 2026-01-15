@@ -4,7 +4,6 @@ import time
 from streamlit_agraph import agraph, Node, Edge, Config
 from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db
 
-# [Actions]
 def act_add_ws(node_id):
     tid = str(node_id)
     if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
@@ -44,13 +43,9 @@ def on_update_setting(key):
         else: ws.append_row([key, str(st.session_state[key])])
     except: pass
 
-# ==========================================
-# SIDEBAR
-# ==========================================
 def render_sidebar(left_col):
     df = pd.DataFrame(st.session_state['nodes_db'])
     kw_counts = pd.DataFrame()
-    
     if not df.empty:
         all_kw = []
         for ks in df['keywords']: all_kw.extend(ks)
@@ -75,9 +70,7 @@ def render_sidebar(left_col):
         with c1: st.markdown("<div class='tight-header'>🔑 Key</div>", unsafe_allow_html=True)
         with c2: 
             if st.button("Reset", key="rk"): st.session_state['selected_keyword'] = None; st.rerun()
-        
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
-        
         with st.container(height=600):
             if not kw_counts.empty:
                 for i, row in enumerate(kw_counts.itertuples(), 1):
@@ -89,13 +82,9 @@ def render_sidebar(left_col):
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
-# ==========================================
-# MAIN RENDERER
-# ==========================================
 def render_node_page(main_col):
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges = {}, []
-    
     if not df.empty:
         df['id'] = df['id'].astype(str)
         node_degree = {r['id']:0 for _,r in df.iterrows()}
@@ -148,7 +137,6 @@ def render_node_page(main_col):
                 "forceAtlas2Based": { "theta": 0.5, "gravitationalConstant": st.session_state['phy_repulsion'], "centralGravity": 0.01, "springConstant": 0.08, "springLength": st.session_state['phy_len'], "damping": st.session_state['phy_damping'], "avoidOverlap": 1 if st.session_state['phy_overlap'] else 0 },
                 "stabilization": { "enabled": not st.session_state['phy_active'], "iterations": 1000 }
             }
-            
             sel = agraph(nodes=ag_nodes, edges=final_edges, config=cfg)
             if sel and sel != st.session_state['last_selection']: 
                 st.session_state['last_selection'] = sel; act_add_ws(sel); st.rerun()
@@ -166,9 +154,9 @@ def render_node_page(main_col):
                             nk = st.text_input("Keywords", value=", ".join(n['keywords']), key=f"k_{n['id']}")
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
                             b1, b2, b3 = st.columns(3)
-                            if b1.button("💾", key=f"up_{n['id']}", use_container_width=True, help="Update"): act_update(n['id'], nl, ns, nk)
-                            if b2.button("Del", key=f"del_{n['id']}", use_container_width=True, help="Trash"): act_trash(n['id'])
-                            if b3.button("X", key=f"cl_{n['id']}", use_container_width=True, help="Close"): act_close_ws(n['id']); st.rerun()
+                            if b1.button("💾", key=f"up_{n['id']}", use_container_width=True): act_update(n['id'], nl, ns, nk)
+                            if b2.button("Del", key=f"del_{n['id']}", use_container_width=True): act_trash(n['id'])
+                            if b3.button("X", key=f"cl_{n['id']}", use_container_width=True): act_close_ws(n['id']); st.rerun()
 
         elif current_mode == "List View":
             if st.session_state['card_stack']:
@@ -177,21 +165,16 @@ def render_node_page(main_col):
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            # [NEW] 카드 헤더에 복사 버튼 추가: Label(6) | Copy(0.8) | Edit(0.8) | Del(0.8) | Close(0.8)
+                            # [COPY BUTTON ADDED]
                             st_c1, st_c2, st_c3, st_c4, st_c5 = st.columns([6, 0.8, 0.8, 0.8, 0.8])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            
-                            # 복사 버튼
                             with st_c2:
-                                with st.popover("📋", use_container_width=True):
-                                    st.code(node_data['summary'], language='text')
-
+                                with st.popover("📋", use_container_width=True): st.code(node_data['summary'], language='text')
                             if st_c3.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
                             if st_c4.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
                             if st_c5.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['card_stack'].pop(i); st.rerun()
-                                
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
@@ -208,7 +191,6 @@ def render_node_page(main_col):
                 except Exception: pass
 
                 st.caption(f"Total: {len(filtered_df)} Nodes")
-                
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
@@ -217,7 +199,6 @@ def render_node_page(main_col):
                         with st.expander(final_label, expanded=False):
                             st.write(row['summary'])
                             st.caption(f"Full Timestamp: {row['timestamp']}")
-                            
                     with row_col2:
                         with st.popover("⋮"):
                             if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
@@ -243,13 +224,11 @@ def render_node_page(main_col):
                 tmp = st.session_state['temp_analysis']
                 if not tmp['success']: st.error(f"{tmp['error']}") 
                 else: st.success("Analysis Complete!")
-                
                 n_title = st.text_input("Title", value=tmp['title'])
                 st.caption("Original Content")
                 st.text_area("Original Content", value=tmp['content'], height=150, disabled=True, label_visibility="collapsed")
                 n_sum = st.text_area("AI Summary", value=tmp['summary'], height=100)
                 n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                
                 if st.button("💾 Save", type="primary", use_container_width=True):
                     final_keywords = [k.strip() for k in n_kw.split(',')]
                     group_name = final_keywords[0] if final_keywords else "General"
