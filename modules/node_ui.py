@@ -4,7 +4,7 @@ import time
 from streamlit_agraph import agraph, Node, Edge, Config
 from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db
 
-# [Actions] UI 내부 동작 함수들
+# [Actions]
 def act_add_ws(node_id):
     tid = str(node_id)
     if tid not in [str(n['id']) for n in st.session_state['workspace_nodes']]:
@@ -45,12 +45,9 @@ def on_update_setting(key):
     except: pass
 
 # ==========================================
-# [NEW] 공통 사이드바 렌더링 함수
+# SIDEBAR
 # ==========================================
 def render_sidebar(left_col):
-    """
-    모든 페이지에서 공통으로 보이는 좌측 키워드 사이드바를 렌더링합니다.
-    """
     df = pd.DataFrame(st.session_state['nodes_db'])
     kw_counts = pd.DataFrame()
     
@@ -93,14 +90,9 @@ def render_sidebar(left_col):
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
 # ==========================================
-# MAIN RENDERER (Node 페이지 전용)
+# MAIN RENDERER
 # ==========================================
 def render_node_page(main_col):
-    """
-    Node 관련 페이지(Graph, List, Add)의 '메인 영역'만 렌더링합니다.
-    """
-    
-    # 1. 데이터 준비 (그래프용)
     df = pd.DataFrame(st.session_state['nodes_db'])
     node_degree, edges = {}, []
     
@@ -113,11 +105,9 @@ def render_node_page(main_col):
                     edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
                     node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
-    # 2. [MAIN] 메인 화면 렌더링
     current_mode = st.session_state['menu_mode']
     
     with main_col:
-        # A. Knowledge Graph
         if current_mode == "Knowledge Graph":
             c_g1, c_g2 = st.columns([8, 2])
             with c_g2:
@@ -180,7 +170,6 @@ def render_node_page(main_col):
                             if b2.button("Del", key=f"del_{n['id']}", use_container_width=True, help="Trash"): act_trash(n['id'])
                             if b3.button("X", key=f"cl_{n['id']}", use_container_width=True, help="Close"): act_close_ws(n['id']); st.rerun()
 
-        # B. List View
         elif current_mode == "List View":
             if st.session_state['card_stack']:
                 st.markdown("### 🗂️ Active Stack")
@@ -188,13 +177,21 @@ def render_node_page(main_col):
                 for i, node_data in enumerate(st.session_state['card_stack']):
                     with stack_cols[i % 3]:
                         with st.container(border=True):
-                            st_c1, st_c2, st_c3, st_c4 = st.columns([6.5, 1.3, 1.3, 1.3])
+                            # [NEW] 카드 헤더에 복사 버튼 추가: Label(6) | Copy(0.8) | Edit(0.8) | Del(0.8) | Close(0.8)
+                            st_c1, st_c2, st_c3, st_c4, st_c5 = st.columns([6, 0.8, 0.8, 0.8, 0.8])
                             st_c1.markdown(f"#### {node_data['label']}")
-                            if st_c2.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True):
+                            
+                            # 복사 버튼
+                            with st_c2:
+                                with st.popover("📋", use_container_width=True):
+                                    st.code(node_data['summary'], language='text')
+
+                            if st_c3.button("Edit", key=f"se_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
-                            if st_c3.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
-                            if st_c4.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True):
+                            if st_c4.button("Del", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
+                            if st_c5.button("X", key=f"sc_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['card_stack'].pop(i); st.rerun()
+                                
                             st.info(node_data['summary'])
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
@@ -231,7 +228,6 @@ def render_node_page(main_col):
                             if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
             else: st.info("No data found.")
 
-        # C. Add Data
         elif current_mode == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
