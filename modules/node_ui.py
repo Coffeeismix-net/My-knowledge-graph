@@ -20,7 +20,6 @@ def act_clear_ws():
 def act_update(nid, label, summary, kw_str):
     k_list = [k.strip() for k in kw_str.split(',')]
     update_node(nid, label, summary, k_list)
-    # Session State 갱신
     for n in st.session_state['nodes_db']:
         if str(n['id']) == str(nid): n['label']=label; n['summary']=summary; n['keywords']=k_list
     for n in st.session_state['workspace_nodes']:
@@ -37,7 +36,6 @@ def act_trash(nid):
         st.success("Moved to Trash 🗑️"); time.sleep(0.5); st.rerun()
 
 def on_update_setting(key):
-    # Setting 저장 로직 (DB연결)
     wb = get_workbook()
     try:
         ws = wb.worksheet("settings")
@@ -47,33 +45,22 @@ def on_update_setting(key):
     except: pass
 
 # ==========================================
-# MAIN RENDERER (이 함수가 메인에서 호출됨)
+# [NEW] 공통 사이드바 렌더링 함수
 # ==========================================
-def render_node_page(left_col, main_col):
+def render_sidebar(left_col):
     """
-    Node 관련 페이지(Graph, List, Add)를 렌더링하고,
-    좌측 사이드바(키워드 검색)까지 처리합니다.
+    모든 페이지에서 공통으로 보이는 좌측 키워드 사이드바를 렌더링합니다.
     """
-    
-    # 1. 데이터 준비
     df = pd.DataFrame(st.session_state['nodes_db'])
-    node_degree, edges, kw_counts = {}, [], pd.DataFrame()
+    kw_counts = pd.DataFrame()
     
     if not df.empty:
-        df['id'] = df['id'].astype(str)
         all_kw = []
         for ks in df['keywords']: all_kw.extend(ks)
         if all_kw:
             kw_counts = pd.Series(all_kw).value_counts().reset_index()
             kw_counts.columns = ['keyword', 'count']
-        node_degree = {r['id']:0 for _,r in df.iterrows()}
-        for i in range(len(df)):
-            for j in range(i+1, len(df)):
-                if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
-                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
-                    node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
 
-    # 2. [LEFT] 사이드바 (키워드 검색)
     with left_col:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
@@ -105,7 +92,28 @@ def render_node_page(left_col, main_col):
                     rc[2].markdown(f"<div class='list-content-row col-center' style='color:#888'>{row.count}</div>", unsafe_allow_html=True)
                     st.markdown("<div style='border-bottom: 1px solid #222; margin-bottom: 2px;'></div>", unsafe_allow_html=True)
 
-    # 3. [MAIN] 메인 화면 (모드에 따라 분기)
+# ==========================================
+# MAIN RENDERER (Node 페이지 전용)
+# ==========================================
+def render_node_page(main_col):
+    """
+    Node 관련 페이지(Graph, List, Add)의 '메인 영역'만 렌더링합니다.
+    """
+    
+    # 1. 데이터 준비 (그래프용)
+    df = pd.DataFrame(st.session_state['nodes_db'])
+    node_degree, edges = {}, []
+    
+    if not df.empty:
+        df['id'] = df['id'].astype(str)
+        node_degree = {r['id']:0 for _,r in df.iterrows()}
+        for i in range(len(df)):
+            for j in range(i+1, len(df)):
+                if set(df.iloc[i]['keywords']) & set(df.iloc[j]['keywords']):
+                    edges.append(Edge(source=df.iloc[i]['id'], target=df.iloc[j]['id'], color="#555"))
+                    node_degree[df.iloc[i]['id']] += 1; node_degree[df.iloc[j]['id']] += 1
+
+    # 2. [MAIN] 메인 화면 렌더링
     current_mode = st.session_state['menu_mode']
     
     with main_col:
@@ -196,7 +204,6 @@ def render_node_page(left_col, main_col):
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                # [정렬] 최신순
                 try:
                     filtered_df['sort_dt'] = pd.to_datetime(filtered_df['timestamp'], format="%y-%m-%d %H:%M", errors='coerce')
                     filtered_df['sort_dt'] = filtered_df['sort_dt'].fillna(pd.Timestamp.now())
@@ -206,7 +213,6 @@ def render_node_page(left_col, main_col):
                 st.caption(f"Total: {len(filtered_df)} Nodes")
                 
                 for _, row in filtered_df.iterrows():
-                    # Node List 레이아웃: 제목(날짜 포함) [0.95] | 메뉴 [0.05]
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
                         date_str = str(row['timestamp']).split()[0]
