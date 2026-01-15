@@ -72,7 +72,7 @@ def delete_company_all(company_name):
 def render_stock_page():
     init_stock_db()
     
-    # [핵심 수정] 세션 상태 초기화를 가장 먼저 수행하여 KeyError 방지
+    # 세션 초기화
     if 'selected_doc_ids' not in st.session_state: 
         st.session_state['selected_doc_ids'] = []
     
@@ -81,10 +81,23 @@ def render_stock_page():
     # [CSS 스타일 정의]
     st.markdown("""
     <style>
-        .doc-tag { background-color: #222; color: #aaa; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-right: 4px; border: 1px solid #444; }
-        .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; }
+        /* [핵심 수정] 태그 줄바꿈 방지 (white-space: nowrap) */
+        .doc-tag { 
+            background-color: #222; 
+            color: #aaa; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            font-size: 0.7rem; 
+            margin-right: 4px; 
+            border: 1px solid #444;
+            white-space: nowrap;      /* 줄바꿈 금지 */
+            display: inline-block;    /* 블록 속성 유지 */
+        }
+        
+        .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; white-space: nowrap; }
         .stQuill { background-color: white; color: black; border-radius: 8px; padding: 5px; min-height: 400px; }
         
+        /* 리스트 버튼 스타일 */
         div[data-testid="column"] button[kind="secondary"] {
             justify-content: flex-start !important;
             text-align: left !important;
@@ -95,6 +108,7 @@ def render_stock_page():
             text-align: left !important;
         }
 
+        /* 팝오버 스타일 */
         div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
         div[data-testid="stPopover"] > button:hover { color: white !important; }
     </style>
@@ -103,7 +117,6 @@ def render_stock_page():
     # 1. 데이터 준비
     df = pd.DataFrame(st.session_state['stock_db'])
     
-    # Auto-complete Data
     all_companies = []
     all_keywords_set = set()
     grouped = pd.DataFrame()
@@ -130,7 +143,7 @@ def render_stock_page():
     is_editor_mode = current_mode in ['add', 'edit']
 
     # ==========================================
-    # [CASE A] 에디터 모드 (Add / Edit)
+    # [CASE A] 에디터 모드 (Add / Edit) - 전체 화면
     # ==========================================
     if is_editor_mode:
         target_id = st.session_state.get('edit_target_id')
@@ -164,11 +177,24 @@ def render_stock_page():
             manual_kws = st.text_input("신규 키워드 추가 (쉼표 구분)", placeholder="예: 성장주")
             
         st.markdown("###### 내용")
+        st.caption("💡 표는 캡처 후 붙여넣기(Ctrl+V) 하세요.")
+        
+        toolbar_config = [
+            ['bold', 'italic', 'underline', 'strike'],
+            ['blockquote', 'code-block'],
+            [{'header': 1}, {'header': 2}],
+            [{'list': 'ordered'}, {'list': 'bullet'}],
+            [{'indent': '-1'}, {'indent': '+1'}],
+            ['link', 'image'],
+            ['clean']
+        ]
+
         if st_quill:
             in_content = st_quill(
                 value=def_content or "",
                 placeholder="내용 작성...",
                 html=True,
+                toolbar=toolbar_config,
                 key=f"quill_{target_id or 'new'}"
             )
         else:
@@ -197,30 +223,21 @@ def render_stock_page():
                 st.rerun()
 
     # ==========================================
-    # [CASE B] 리스트 / 뷰어 모드
+    # [CASE B] 리스트 / 뷰어 모드 (상하 배치)
     # ==========================================
     else:
+        # 1. 상단: 검색 및 리스트 (스크롤 가능한 컨테이너)
         st.text_input("🔍 기업명/키워드 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
         search_query = st.session_state.get("stock_search_query", "")
-        st.divider()
-
-        # [안전장치] 초기화된 세션 변수 사용
-        is_viewer_open = len(st.session_state['selected_doc_ids']) > 0
-        if is_viewer_open:
-            col_left, col_right = st.columns([1, 2.5]) 
-        else:
-            col_left = st.container()
-            col_right = None
-
-        # [좌측] 리스트
-        with col_left:
+        
+        # [핵심] 리스트를 상단에 고정하고 스크롤바 생성 (높이 280px)
+        with st.container(height=280):
             if not grouped.empty:
                 for _, co_row in grouped.iterrows():
                     if search_query and (search_query not in co_row['company']):
                         continue
                     
-                    # [레이아웃] 기업 Expander(9) | 기업 삭제 버튼(1)
-                    c_exp, c_del = st.columns([9, 1])
+                    c_exp, c_del = st.columns([9.2, 0.8])
                     
                     with c_exp:
                         with st.expander(f"🏢 {co_row['company']}", expanded=False):
@@ -236,6 +253,9 @@ def render_stock_page():
                                     if st.button(doc_title, key=f"open_{doc['id']}", use_container_width=True):
                                         st.session_state['selected_doc_ids'] = [doc['id']]
                                         st.session_state['stock_view_mode'] = 'view'
+                                        # rerun 하지 않음 (뷰어만 갱신되면 되는데, 리스트가 닫히는걸 방지하기 위해)
+                                        # 하지만 Streamlit 특성상 rerun은 필요함.
+                                        # 리스트 상단 고정이므로 rerun 되어도 뷰어는 아래에 뜸.
                                         st.rerun()
                                 
                                 with r_c2:
@@ -253,37 +273,38 @@ def render_stock_page():
                                             move_to_trash(doc['id'])
                     
                     with c_del:
-                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 전체 삭제", use_container_width=True):
+                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 삭제", use_container_width=True):
                              delete_company_all(co_row['company'])
+            else:
+                st.caption("등록된 기업 문서가 없습니다.")
 
-        # [우측] 뷰어
-        if is_viewer_open and col_right:
-            with col_right:
-                sel_ids = st.session_state['selected_doc_ids']
-                if not sel_ids:
-                    st.info("문서를 선택하세요.")
-                else:
-                    tabs = st.tabs([f"📄 Doc {i+1}" for i in range(len(sel_ids))])
-                    for i, doc_id in enumerate(sel_ids):
-                        doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
-                        if doc:
-                            with tabs[i]:
-                                with st.container(border=True):
-                                    h1, h2 = st.columns([9.5, 0.5])
-                                    with h1:
-                                        st.markdown(f"## {doc['title']}")
-                                        st.caption(f"{doc['created_at']} | {doc['company']}")
-                                    with h2:
-                                        if st.button("✕", key=f"v_close_{doc['id']}", help="닫기"):
-                                            st.session_state['selected_doc_ids'].remove(doc['id'])
-                                            st.rerun()
-                                    
-                                    kw_cols = st.columns(10)
-                                    for k_idx, kw in enumerate(doc['keywords']):
-                                        if k_idx < 10:
-                                            if kw_cols[k_idx].button(f"#{kw}", key=f"v_kw_{doc['id']}_{k_idx}"):
-                                                st.session_state['menu_mode'] = "Knowledge Graph"
-                                                st.session_state['selected_keyword'] = kw
-                                                st.rerun()
-                                    st.divider()
-                                    st.markdown(doc['content'], unsafe_allow_html=True)
+        # 2. 하단: 문서 뷰어 (리스트 바로 아래에 표시)
+        st.divider() # 구분선
+        
+        sel_ids = st.session_state.get('selected_doc_ids', [])
+        if sel_ids:
+            # 여러 개 선택 가능하지만 보통 1개
+            for i, doc_id in enumerate(sel_ids):
+                doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
+                if doc:
+                    with st.container(border=True):
+                        h1, h2 = st.columns([9.5, 0.5])
+                        with h1:
+                            st.markdown(f"## {doc['title']}")
+                            st.caption(f"{doc['created_at']} | {doc['company']}")
+                        with h2:
+                            if st.button("✕", key=f"v_close_{doc['id']}", help="닫기"):
+                                st.session_state['selected_doc_ids'].remove(doc['id'])
+                                st.rerun()
+                        
+                        kw_cols = st.columns(10)
+                        for k_idx, kw in enumerate(doc['keywords']):
+                            if k_idx < 10:
+                                if kw_cols[k_idx].button(f"#{kw}", key=f"v_kw_{doc['id']}_{k_idx}"):
+                                    st.session_state['menu_mode'] = "Knowledge Graph"
+                                    st.session_state['selected_keyword'] = kw
+                                    st.rerun()
+                        st.divider()
+                        st.markdown(doc['content'], unsafe_allow_html=True)
+        else:
+            st.info("👆 위 리스트에서 문서를 선택하면 내용이 여기에 표시됩니다.")
