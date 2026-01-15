@@ -3,7 +3,8 @@ import pandas as pd
 from datetime import datetime
 import time
 from utils.style import get_common_style
-from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html
+# [NEW] copy_to_clipboard 임포트
+from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
 
 try:
     from streamlit_quill import st_quill
@@ -32,17 +33,28 @@ def move_to_trash(doc_id):
         st.rerun()
 
 def delete_company_all(company_name):
+    # 1. 해당 기업 문서 찾기
     targets = [d for d in st.session_state['stock_db'] if d['company'] == company_name]
+    
     if targets:
+        # 2. 하나씩 휴지통으로 이동 (DB & Session)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         for doc in targets:
-            move_stock_to_trash(doc) # DB 반영 (휴지통 시트로 이동)
+            move_stock_to_trash(doc) # DB의 stock_trash로 이동
+            
+            # Session Trash에도 추가 (휴지통 탭에서 바로 보이게)
+            doc['deleted_at'] = now_str
+            st.session_state['stock_trash_db'].append(doc)
+            
             if doc['id'] in st.session_state.get('selected_doc_ids', []):
                 st.session_state['selected_doc_ids'].remove(doc['id'])
         
+        # 3. Session 원본 리스트에서 제거
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
-        st.toast(f"🗑️ '{company_name}' 및 관련 문서가 휴지통으로 이동되었습니다.")
+        st.toast(f"🗑️ '{company_name}' 및 관련 문서 {len(targets)}건이 휴지통으로 이동되었습니다.")
     else:
         st.toast("삭제할 문서가 없습니다.")
+    
     time.sleep(1.0)
     st.rerun()
 
@@ -181,11 +193,19 @@ def render_stock_page():
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
-                        h1, h2 = st.columns([9.5, 0.5])
+                        h1, h2, h3 = st.columns([9, 0.5, 0.5])
                         with h1: 
                             st.markdown(f"## {doc['title']}")
                             st.caption(f"{doc['created_at']} | {doc['company']}")
+                        
+                        # [복사 버튼 수정] Popover 대신 즉시 복사 버튼 적용
                         with h2:
+                            if st.button("📋", key=f"cp_doc_{doc['id']}", help="내용 전체 복사"):
+                                full_text = f"[{doc['company']}] {doc['title']}\n키워드: {', '.join(doc['keywords'])}\n작성일: {doc['created_at']}\n\n{strip_html(doc['content'])}"
+                                copy_to_clipboard(full_text)
+                                st.toast("클립보드에 복사되었습니다!")
+
+                        with h3:
                             if st.button("✕", key=f"cl_{doc['id']}", help="닫기"):
                                 st.session_state['selected_doc_ids'].remove(doc['id'])
                                 st.session_state['doc_manually_closed'] = True
@@ -197,13 +217,5 @@ def render_stock_page():
                                 if cols[idx].button(f"#{kw}", key=f"k_{doc['id']}_{idx}"):
                                     st.session_state['menu_mode'] = "Knowledge Graph"; st.session_state['selected_keyword'] = kw; st.rerun()
                         st.divider()
-                        
-                        # [개선된 복사 기능] 제목 바로 아래에 전체 내용을 복사할 수 있는 코드 블록 제공
-                        full_copy_text = f"[{doc['company']}] {doc['title']}\nKeywords: {', '.join(doc['keywords'])}\nDate: {doc['created_at']}\n\n{strip_html(doc['content'])}"
-                        
-                        # expander 안에 넣어서 평소에는 숨겨두고 필요할 때 열어서 복사
-                        with st.expander("📋 전체 내용 복사하기 (클릭)", expanded=False):
-                            st.code(full_copy_text, language='text')
-                        
                         st.markdown(doc['content'], unsafe_allow_html=True)
         else: st.info("문서를 선택하세요.")
