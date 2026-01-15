@@ -15,15 +15,23 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapi
 @st.cache_resource
 def get_db_client():
     try:
-        if "gcp_service_account" not in st.secrets: return None
+        if "gcp_service_account" not in st.secrets:
+            st.error("Secrets에 'gcp_service_account' 정보가 없습니다.")
+            return None
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
         return gspread.authorize(creds)
-    except: return None
+    except Exception as e:
+        st.error(f"DB 연결 실패: {e}")
+        return None
 
 def get_workbook():
     client = get_db_client()
-    # [주의] 사용 중인 스프레드시트 Key가 맞는지 꼭 확인해주세요!
-    return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
+    # [주의] 스프레드시트 Key가 정확한지 확인하세요!
+    try:
+        return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
+    except Exception as e:
+        st.error(f"스프레드시트를 찾을 수 없습니다: {e}")
+        return None
 
 # ==========================================
 # SETTINGS
@@ -40,7 +48,7 @@ def save_setting_to_db(key, value):
         cell = ws.find(key)
         if cell: ws.update_cell(cell.row, 2, str(value))
         else: ws.append_row([key, str(value)])
-    except: pass
+    except Exception as e: print(f"Setting Save Error: {e}")
 
 # ==========================================
 # NODE CRUD
@@ -60,7 +68,9 @@ def load_nodes():
                 "summary": row['summary'], "keywords": kws, "timestamp": ts
             })
         return nodes
-    except: return []
+    except Exception as e:
+        st.error(f"노드 불러오기 실패: {e}")
+        return []
 
 def add_node(label, group, summary, keywords):
     wb = get_workbook()
@@ -71,7 +81,9 @@ def add_node(label, group, summary, keywords):
         now_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         wb.sheet1.append_row([new_id, label, group, summary, kw_str, now_ts])
         return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
-    except: return None
+    except Exception as e:
+        st.error(f"노드 추가 실패: {e}")
+        return None
 
 def update_node(node_id, label, summary, keywords):
     wb = get_workbook()
@@ -85,7 +97,7 @@ def update_node(node_id, label, summary, keywords):
             sheet.update_cell(r, 3, keywords[0] if keywords else "General")
             sheet.update_cell(r, 4, summary)
             sheet.update_cell(r, 5, ",".join(keywords))
-    except: pass
+    except Exception as e: st.error(f"노드 수정 실패: {e}")
 
 def move_to_trash(node_id, node_data):
     wb = get_workbook()
@@ -95,13 +107,13 @@ def move_to_trash(node_id, node_data):
         except: 
             trash_sheet = wb.add_worksheet(title="trash", rows=100, cols=7)
             trash_sheet.append_row(["id", "label", "group", "summary", "keywords", "created_at", "deleted_at"])
-        del_time = datetime.now().strftime("%y-%m-%d %H:%M")
+        del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
         k_str = ",".join(node_data['keywords'])
         trash_sheet.append_row([node_data['id'], node_data['label'], node_data['group'], node_data['summary'], k_str, node_data['timestamp'], del_time])
         main_sheet = wb.sheet1
         cell = main_sheet.find(str(node_id))
         if cell: main_sheet.delete_rows(cell.row)
-    except Exception as e: st.error(f"Error: {e}")
+    except Exception as e: st.error(f"삭제 실패: {e}")
 
 def load_trash():
     wb = get_workbook()
@@ -127,7 +139,7 @@ def permanent_delete(node_id):
     except: pass
 
 # ==========================================
-# [NEW] STOCK CRUD (기업분석 DB 연동)
+# [STOCK CRUD] (에러 출력 추가)
 # ==========================================
 def load_stocks():
     wb = get_workbook()
@@ -153,7 +165,9 @@ def load_stocks():
                 "created_at": str(row['created_at'])
             })
         return stocks
-    except: return []
+    except Exception as e:
+        st.error(f"Stock 목록 로드 실패: {e}")
+        return []
 
 def add_stock(company, title, content, keywords):
     wb = get_workbook()
@@ -170,7 +184,9 @@ def add_stock(company, title, content, keywords):
             "id": new_id, "company": company, "title": title, 
             "content": content, "keywords": keywords, "created_at": now_str
         }
-    except: return None
+    except Exception as e:
+        st.error(f"Stock 추가 실패: {e}")
+        return None
 
 def update_stock(doc_id, company, title, content, keywords):
     wb = get_workbook()
@@ -186,7 +202,7 @@ def update_stock(doc_id, company, title, content, keywords):
             ws.update_cell(r, 5, ",".join(keywords))
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             ws.update_cell(r, 6, now_str)
-    except: pass
+    except Exception as e: st.error(f"Stock 수정 실패: {e}")
 
 def move_stock_to_trash(doc_data):
     wb = get_workbook()
@@ -208,7 +224,7 @@ def move_stock_to_trash(doc_data):
         ws = wb.worksheet("stocks")
         cell = ws.find(str(doc_data['id']))
         if cell: ws.delete_rows(cell.row)
-    except: pass
+    except Exception as e: st.error(f"Stock 삭제 실패: {e}")
 
 # ==========================================
 # AI Helper
