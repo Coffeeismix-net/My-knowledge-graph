@@ -2,10 +2,11 @@ import streamlit as st
 from datetime import datetime
 import time
 
-# [MODULE IMPORTS] 모듈화된 파일들 불러오기
+# [MODULE IMPORTS]
 from utils.db_api import load_nodes, load_trash, restore_node, permanent_delete, load_trash, get_workbook
 from modules.stock_ui import render_stock_page
-from modules.node_ui import render_node_page
+# render_node_page와 render_sidebar를 모두 가져옵니다.
+from modules.node_ui import render_node_page, render_sidebar
 
 # ==========================================
 # 1. PAGE & STYLE CONFIGURATION
@@ -71,7 +72,7 @@ def init_session_state():
 
 init_session_state()
 
-# --- 설정 로드 (DB API가 있지만 Session State 초기화용으로 간단히 여기서 호출) ---
+# --- 설정 로드 ---
 if not st.session_state['settings_loaded']:
     wb = get_workbook()
     if wb:
@@ -109,9 +110,12 @@ else:
     # [LAYOUT] 좌측(사이드바) : 우측(메인)
     left, main = st.columns([0.8, 5.2])
     
-    # [MAIN CONTENT]
+    # [1] 공통 사이드바 렌더링 (어떤 메뉴든 항상 보임)
+    render_sidebar(left)
+    
+    # [2] 메인 컨텐츠 영역
     with main:
-        # 1. 메뉴 바 (우측 정렬)
+        # 메뉴 바 (우측 정렬)
         menu_cols = st.columns([6, 1, 1, 1, 1]) 
         
         # Node 메뉴
@@ -147,19 +151,21 @@ else:
         st.markdown(f"<div class='tight-header' style='text-align: right;'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
 
-        # 2. 라우팅 (페이지 연결)
+        # 라우팅 (페이지 연결)
         current_mode = st.session_state['menu_mode']
 
         if current_mode in ["Knowledge Graph", "List View", "Add Data"]:
-            # [NEW] Node 관련 페이지는 모듈에서 처리 (left 컬럼도 전달)
-            render_node_page(left, main)
+            # [수정] 메인 컬럼만 넘김 (사이드바는 이미 그렸으므로)
+            render_node_page(main)
             
         elif current_mode == "Stock Analysis":
-            if render_stock_page: render_stock_page()
+            if render_stock_page: 
+                # Stock 페이지는 메인 컬럼 안에서 스스로를 그립니다.
+                render_stock_page()
             else: st.warning("Stock Module Error")
             
         elif current_mode == "Trash Can":
-            # Trash는 간단하므로 메인에 유지 (DB 함수는 db_api에서 가져옴)
+            # Trash Page Logic
             st.markdown("### 🗑️ Trash Can (Recycle Bin)")
             st.caption("삭제된 노드는 여기에 30일간 보관됩니다.")
             trash_data = load_trash()
