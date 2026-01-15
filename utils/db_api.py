@@ -6,7 +6,8 @@ import json
 import hashlib
 from datetime import datetime
 import uuid
-import re # [NEW] HTML 태그 제거용
+import re
+import streamlit.components.v1 as components # [NEW] JS 실행용
 
 # ==========================================
 # GOOGLE SHEETS & DRIVE
@@ -26,6 +27,42 @@ def get_workbook():
     try:
         return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
     except: return None
+
+# ==========================================
+# [NEW] CLIPBOARD HELPER (자바스크립트 복사)
+# ==========================================
+def copy_to_clipboard(text):
+    """
+    텍스트를 클립보드에 복사하는 자바스크립트를 실행합니다.
+    json.dumps를 사용하여 줄바꿈이나 특수문자가 있어도 안전하게 처리합니다.
+    """
+    escaped_text = json.dumps(text)
+    js_code = f"""
+    <script>
+        function copyToClipboard(text) {{
+            if (navigator.clipboard && window.isSecureContext) {{
+                navigator.clipboard.writeText(text);
+            }} else {{
+                // Fallback for older browsers or non-secure context
+                let textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {{
+                    document.execCommand('copy');
+                }} catch (err) {{
+                    console.error('Fallback: Oops, unable to copy', err);
+                }}
+                document.body.removeChild(textArea);
+            }}
+        }}
+        copyToClipboard({escaped_text});
+    </script>
+    """
+    components.html(js_code, height=0)
 
 # ==========================================
 # SETTINGS
@@ -139,7 +176,6 @@ def load_stocks():
             ws = wb.add_worksheet(title="stocks", rows=100, cols=6)
             ws.append_row(["id", "company", "title", "content", "keywords", "created_at"])
             return []
-        
         data = ws.get_all_records()
         stocks = []
         for row in data:
@@ -201,14 +237,12 @@ def move_stock_to_trash(doc_data):
         if cell: ws.delete_rows(cell.row)
     except: pass
 
-# [NEW] Stock 휴지통 로드
 def load_stock_trash():
     wb = get_workbook()
     if not wb: return []
     try: return wb.worksheet("stock_trash").get_all_records()
     except: return []
 
-# [NEW] Stock 복구
 def restore_stock(stock_row):
     wb = get_workbook()
     if not wb: return
@@ -218,7 +252,6 @@ def restore_stock(stock_row):
         permanent_delete_stock(stock_row['id'])
     except: pass
 
-# [NEW] Stock 영구 삭제
 def permanent_delete_stock(doc_id):
     wb = get_workbook()
     if not wb: return
@@ -229,7 +262,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 # ==========================================
-# AI Helper & Util
+# AI & UTILS
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets: return {"success": False, "error": "Secrets Error"}
@@ -243,7 +276,6 @@ def ai_process(text):
     except Exception as e: return {"success": False, "error": str(e)}
 
 def strip_html(html_content):
-    """HTML 태그를 제거하고 텍스트만 추출"""
     if not html_content: return ""
     clean = re.compile('<.*?>')
     return re.sub(clean, '', html_content)
