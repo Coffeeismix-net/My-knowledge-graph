@@ -3,8 +3,7 @@ import pandas as pd
 from datetime import datetime
 import time
 from utils.style import get_common_style
-# [DB API 연결]
-from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash
+from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html
 
 try:
     from streamlit_quill import st_quill
@@ -12,7 +11,6 @@ except ImportError:
     st_quill = None
 
 def init_stock_db():
-    # [REAL DB] 예시 데이터 없이 DB에서 로드
     if 'stock_db' not in st.session_state:
         st.session_state['stock_db'] = load_stocks()
     if 'stock_trash_db' not in st.session_state:
@@ -21,7 +19,7 @@ def init_stock_db():
 def move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
-        move_stock_to_trash(target_doc) # DB 삭제
+        move_stock_to_trash(target_doc) # DB 반영
         
         target_doc['deleted_at'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         st.session_state['stock_trash_db'].append(target_doc)
@@ -37,12 +35,12 @@ def delete_company_all(company_name):
     targets = [d for d in st.session_state['stock_db'] if d['company'] == company_name]
     if targets:
         for doc in targets:
-            move_stock_to_trash(doc) # DB 삭제
+            move_stock_to_trash(doc) # DB 반영 (휴지통 시트로 이동)
             if doc['id'] in st.session_state.get('selected_doc_ids', []):
                 st.session_state['selected_doc_ids'].remove(doc['id'])
         
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
-        st.toast(f"🗑️ '{company_name}' 관련 문서가 삭제되었습니다.")
+        st.toast(f"🗑️ '{company_name}' 및 관련 문서가 휴지통으로 이동되었습니다.")
     else:
         st.toast("삭제할 문서가 없습니다.")
     time.sleep(1.0)
@@ -66,8 +64,7 @@ def render_stock_page():
     """, unsafe_allow_html=True)
 
     df = pd.DataFrame(st.session_state['stock_db'])
-    all_companies = []
-    all_keywords_set = set()
+    all_companies, all_keywords_set = [], set()
     grouped = pd.DataFrame()
     
     if not df.empty:
@@ -129,11 +126,11 @@ def render_stock_page():
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
                 if target_id:
-                    update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw) # DB Update
+                    update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
                     for d in st.session_state['stock_db']:
                         if d['id'] == target_id: d.update({"company": final_comp, "title": st.session_state.doc_title, "content": in_content, "keywords": f_kw, "created_at": now_str})
                 else:
-                    new_data = add_stock(final_comp, st.session_state.doc_title, in_content, f_kw) # DB Add
+                    new_data = add_stock(final_comp, st.session_state.doc_title, in_content, f_kw)
                     if new_data: st.session_state['stock_db'].append(new_data)
                 
                 st.success("저장되었습니다!")
@@ -174,7 +171,7 @@ def render_stock_page():
                                             st.session_state['stock_view_mode'] = 'edit'; st.session_state['edit_target_id'] = doc['id']; st.rerun()
                                         if st.button("Trash", key=f"d_{doc['id']}", use_container_width=True): move_to_trash(doc['id'])
                     with c_del:
-                        if st.button("🗑️", key=f"del_co_{co['company']}", help="기업 삭제", use_container_width=True): delete_company_all(co['company'])
+                        if st.button("🗑️", key=f"del_co_{co['company']}", help="기업 및 문서 휴지통 이동", use_container_width=True): delete_company_all(co['company'])
             else: st.caption("문서가 없습니다.")
 
         st.divider()
@@ -184,15 +181,11 @@ def render_stock_page():
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
-                        h1, h2, h3 = st.columns([9, 0.5, 0.5])
+                        h1, h2 = st.columns([9.5, 0.5])
                         with h1: 
                             st.markdown(f"## {doc['title']}")
                             st.caption(f"{doc['created_at']} | {doc['company']}")
-                        # [COPY BUTTON]
                         with h2:
-                            with st.popover("📋", help="복사", use_container_width=True):
-                                st.code(doc['content'], language='html')
-                        with h3:
                             if st.button("✕", key=f"cl_{doc['id']}", help="닫기"):
                                 st.session_state['selected_doc_ids'].remove(doc['id'])
                                 st.session_state['doc_manually_closed'] = True
@@ -204,5 +197,13 @@ def render_stock_page():
                                 if cols[idx].button(f"#{kw}", key=f"k_{doc['id']}_{idx}"):
                                     st.session_state['menu_mode'] = "Knowledge Graph"; st.session_state['selected_keyword'] = kw; st.rerun()
                         st.divider()
+                        
+                        # [개선된 복사 기능] 제목 바로 아래에 전체 내용을 복사할 수 있는 코드 블록 제공
+                        full_copy_text = f"[{doc['company']}] {doc['title']}\nKeywords: {', '.join(doc['keywords'])}\nDate: {doc['created_at']}\n\n{strip_html(doc['content'])}"
+                        
+                        # expander 안에 넣어서 평소에는 숨겨두고 필요할 때 열어서 복사
+                        with st.expander("📋 전체 내용 복사하기 (클릭)", expanded=False):
+                            st.code(full_copy_text, language='text')
+                        
                         st.markdown(doc['content'], unsafe_allow_html=True)
         else: st.info("문서를 선택하세요.")
