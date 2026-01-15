@@ -5,6 +5,7 @@ import google.generativeai as genai
 import json
 import hashlib
 from datetime import datetime
+import uuid
 
 # ==========================================
 # GOOGLE SHEETS & DRIVE
@@ -21,11 +22,11 @@ def get_db_client():
 
 def get_workbook():
     client = get_db_client()
-    # [주의] 기존 시트 키가 맞는지 확인하세요
+    # [주의] 사용 중인 스프레드시트 Key가 맞는지 꼭 확인해주세요!
     return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
 
 # ==========================================
-# [NEW] SETTINGS MANAGER (이 부분이 누락되었었습니다)
+# SETTINGS
 # ==========================================
 def save_setting_to_db(key, value):
     wb = get_workbook()
@@ -65,10 +66,9 @@ def add_node(label, group, summary, keywords):
     wb = get_workbook()
     if not wb: return None
     try:
-        import uuid
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        now_ts = datetime.now().strftime("%y-%m-%d %H:%M")
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         wb.sheet1.append_row([new_id, label, group, summary, kw_str, now_ts])
         return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
     except: return None
@@ -124,6 +124,90 @@ def permanent_delete(node_id):
         trash_sheet = wb.worksheet("trash")
         cell = trash_sheet.find(str(node_id))
         if cell: trash_sheet.delete_rows(cell.row)
+    except: pass
+
+# ==========================================
+# [NEW] STOCK CRUD (기업분석 DB 연동)
+# ==========================================
+def load_stocks():
+    wb = get_workbook()
+    if not wb: return []
+    try:
+        try: ws = wb.worksheet("stocks")
+        except:
+            ws = wb.add_worksheet(title="stocks", rows=100, cols=6)
+            ws.append_row(["id", "company", "title", "content", "keywords", "created_at"])
+            return []
+        
+        data = ws.get_all_records()
+        stocks = []
+        for row in data:
+            k_str = str(row.get('keywords', ''))
+            kws = [k.strip() for k in k_str.split(',')] if k_str else []
+            stocks.append({
+                "id": str(row['id']),
+                "company": row['company'],
+                "title": row['title'],
+                "content": row['content'],
+                "keywords": kws,
+                "created_at": str(row['created_at'])
+            })
+        return stocks
+    except: return []
+
+def add_stock(company, title, content, keywords):
+    wb = get_workbook()
+    if not wb: return None
+    try:
+        new_id = str(uuid.uuid4())[:8]
+        kw_str = ",".join(keywords)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        ws = wb.worksheet("stocks")
+        ws.append_row([new_id, company, title, content, kw_str, now_str])
+        
+        return {
+            "id": new_id, "company": company, "title": title, 
+            "content": content, "keywords": keywords, "created_at": now_str
+        }
+    except: return None
+
+def update_stock(doc_id, company, title, content, keywords):
+    wb = get_workbook()
+    if not wb: return
+    try:
+        ws = wb.worksheet("stocks")
+        cell = ws.find(str(doc_id))
+        if cell:
+            r = cell.row
+            ws.update_cell(r, 2, company)
+            ws.update_cell(r, 3, title)
+            ws.update_cell(r, 4, content)
+            ws.update_cell(r, 5, ",".join(keywords))
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            ws.update_cell(r, 6, now_str)
+    except: pass
+
+def move_stock_to_trash(doc_data):
+    wb = get_workbook()
+    if not wb: return
+    try:
+        try: trash_sheet = wb.worksheet("stock_trash")
+        except: 
+            trash_sheet = wb.add_worksheet(title="stock_trash", rows=100, cols=7)
+            trash_sheet.append_row(["id", "company", "title", "content", "keywords", "created_at", "deleted_at"])
+        
+        del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        k_str = ",".join(doc_data['keywords'])
+        
+        trash_sheet.append_row([
+            doc_data['id'], doc_data['company'], doc_data['title'], 
+            doc_data['content'], k_str, doc_data['created_at'], del_time
+        ])
+        
+        ws = wb.worksheet("stocks")
+        cell = ws.find(str(doc_data['id']))
+        if cell: ws.delete_rows(cell.row)
     except: pass
 
 # ==========================================
