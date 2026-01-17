@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta # [NEW]
 import time
 from utils.style import get_common_style
 from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
@@ -9,6 +9,10 @@ try:
     from streamlit_quill import st_quill
 except ImportError:
     st_quill = None
+
+# [UI용 KST Helper]
+def get_kst_now_str():
+    return (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
 
 def init_stock_db():
     if 'stock_db' not in st.session_state:
@@ -20,7 +24,7 @@ def move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
         move_stock_to_trash(target_doc)
-        target_doc['deleted_at'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        target_doc['deleted_at'] = get_kst_now_str() # [KST]
         st.session_state['stock_trash_db'].append(target_doc)
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['id'] != doc_id]
         if doc_id in st.session_state.get('selected_doc_ids', []):
@@ -120,7 +124,7 @@ def render_stock_page():
             else:
                 m_kw = [k.strip() for k in manual_kws.split(',') if k.strip()]
                 f_kw = list(set(sel_kws + m_kw))
-                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                now_str = get_kst_now_str() # [KST]
                 
                 if target_id:
                     update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
@@ -164,7 +168,13 @@ def render_stock_page():
                                         st.rerun()
                                 with r2:
                                     k_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                                    d_str = doc['created_at'].strftime('%y.%m.%d')
+                                    # 날짜 포맷 (년.월.일)
+                                    try: 
+                                        d_obj = datetime.strptime(doc['created_at'], "%Y-%m-%d %H:%M")
+                                        d_str = d_obj.strftime('%y.%m.%d')
+                                    except: 
+                                        d_str = doc['created_at'][:10]
+                                    
                                     st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{k_html}<span class='date-label'>{d_str}</span></div>", unsafe_allow_html=True)
                                 with r3:
                                     with st.popover("⋮", use_container_width=True):
@@ -182,14 +192,9 @@ def render_stock_page():
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
-                        # [NEW] 헤더 레이아웃 통합: 제목 | 정보 | 키워드 한 줄 배치
                         h1, h2, h3 = st.columns([8, 1, 1])
-                        
                         with h1:
-                            # 키워드 HTML 생성
                             keywords_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                            
-                            # 통합 HTML (Flexbox 사용)
                             title_html = f"""
                             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
                                 <h2 style="margin: 0; padding: 0;">{doc['title']}</h2>
@@ -200,15 +205,11 @@ def render_stock_page():
                             </div>
                             """
                             st.markdown(title_html, unsafe_allow_html=True)
-                        
-                        # 복사 버튼
                         with h2:
                             if st.button("📋", key=f"cp_doc_{doc['id']}", help="내용 전체 복사", use_container_width=True):
                                 full_text = f"[{doc['company']}] {doc['title']}\n키워드: {', '.join(doc['keywords'])}\n작성일: {doc['created_at']}\n\n{strip_html(doc['content'])}"
                                 copy_to_clipboard(full_text)
                                 st.toast("클립보드에 복사되었습니다!")
-
-                        # 닫기 버튼
                         with h3:
                             if st.button("✕", key=f"cl_{doc['id']}", help="닫기", use_container_width=True):
                                 st.session_state['selected_doc_ids'].remove(doc['id'])
@@ -216,6 +217,5 @@ def render_stock_page():
                                 st.rerun()
                         
                         st.divider()
-                        # [삭제됨] 수동 복사 Expander 삭제
                         st.markdown(doc['content'], unsafe_allow_html=True)
         else: st.info("문서를 선택하세요.")
