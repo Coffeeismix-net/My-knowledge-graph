@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime
 import uuid
 import re
-import streamlit.components.v1 as components # [NEW] JS 실행용
+import streamlit.components.v1 as components
 
 # ==========================================
 # GOOGLE SHEETS & DRIVE
@@ -29,13 +29,9 @@ def get_workbook():
     except: return None
 
 # ==========================================
-# [NEW] CLIPBOARD HELPER (자바스크립트 복사)
+# CLIPBOARD HELPER
 # ==========================================
 def copy_to_clipboard(text):
-    """
-    텍스트를 클립보드에 복사하는 자바스크립트를 실행합니다.
-    json.dumps를 사용하여 줄바꿈이나 특수문자가 있어도 안전하게 처리합니다.
-    """
     escaped_text = json.dumps(text)
     js_code = f"""
     <script>
@@ -43,7 +39,6 @@ def copy_to_clipboard(text):
             if (navigator.clipboard && window.isSecureContext) {{
                 navigator.clipboard.writeText(text);
             }} else {{
-                // Fallback for older browsers or non-secure context
                 let textArea = document.createElement("textarea");
                 textArea.value = text;
                 textArea.style.position = "fixed";
@@ -51,11 +46,7 @@ def copy_to_clipboard(text):
                 document.body.appendChild(textArea);
                 textArea.focus();
                 textArea.select();
-                try {{
-                    document.execCommand('copy');
-                }} catch (err) {{
-                    console.error('Fallback: Oops, unable to copy', err);
-                }}
+                try {{ document.execCommand('copy'); }} catch (err) {{ console.error('Fallback error', err); }}
                 document.body.removeChild(textArea);
             }}
         }}
@@ -202,7 +193,9 @@ def add_stock(company, title, content, keywords):
         ws = wb.worksheet("stocks")
         ws.append_row([new_id, company, title, content, kw_str, now_str])
         return {"id": new_id, "company": company, "title": title, "content": content, "keywords": keywords, "created_at": now_str}
-    except: return None
+    except Exception as e:
+        st.error(f"DB 저장 오류: {e}")
+        return None
 
 def update_stock(doc_id, company, title, content, keywords):
     wb = get_workbook()
@@ -227,7 +220,6 @@ def move_stock_to_trash(doc_data):
         except: 
             trash_sheet = wb.add_worksheet(title="stock_trash", rows=100, cols=7)
             trash_sheet.append_row(["id", "company", "title", "content", "keywords", "created_at", "deleted_at"])
-        
         del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
         k_str = ",".join(doc_data['keywords'])
         trash_sheet.append_row([doc_data['id'], doc_data['company'], doc_data['title'], doc_data['content'], k_str, doc_data['created_at'], del_time])
@@ -262,7 +254,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 # ==========================================
-# AI & UTILS
+# AI Helper & Util
 # ==========================================
 def ai_process(text):
     if "gemini" not in st.secrets: return {"success": False, "error": "Secrets Error"}
@@ -280,11 +272,8 @@ def strip_html(html_content):
     clean = re.compile('<.*?>')
     return re.sub(clean, '', html_content)
 
-# ==========================================
-# COLORS (Automatic Coloring)
-# ==========================================
-# [수정] 고정 색상(FIXED_COLORS) 삭제 -> 완전 자동화
-# 다양한 색상 팔레트 준비 (20색)
+# [수정] 자동 색상 부여 (Auto-Coloring)
+# 특정 키워드가 아닌 모든 키워드에 대해 해시값을 기반으로 색상을 부여합니다.
 COLOR_PALETTE = [
     "#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600",
     "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF",
@@ -293,15 +282,7 @@ COLOR_PALETTE = [
 ]
 
 def get_group_color(group_name):
-    """
-    그룹 이름(문자열)을 입력받아, 항상 동일한 색상을 반환합니다.
-    (Deterministic Hashing)
-    """
-    if not group_name:
-        return "#888888" # 그룹이 없으면 회색
-        
-    # 문자열을 SHA-256 해시로 변환하여 숫자로 만듦
+    if not group_name: return "#888888"
+    # 그룹 이름을 해시값으로 변환하여 항상 고정된 색상 반환
     hash_val = int(hashlib.sha256(group_name.encode('utf-8')).hexdigest(), 16)
-    
-    # 팔레트 개수만큼 나눈 나머지로 색상 선택 (무작위 같지만 항상 같은 색 보장)
     return COLOR_PALETTE[hash_val % len(COLOR_PALETTE)]
