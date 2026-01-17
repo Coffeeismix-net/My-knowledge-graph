@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime
 import time
 from utils.style import get_common_style
-# [NEW] copy_to_clipboard 임포트
 from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
 
 try:
@@ -20,12 +19,10 @@ def init_stock_db():
 def move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
-        move_stock_to_trash(target_doc) # DB 반영
-        
+        move_stock_to_trash(target_doc)
         target_doc['deleted_at'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         st.session_state['stock_trash_db'].append(target_doc)
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['id'] != doc_id]
-        
         if doc_id in st.session_state.get('selected_doc_ids', []):
             st.session_state['selected_doc_ids'].remove(doc_id)
         st.toast("🗑️ 휴지통으로 이동되었습니다.")
@@ -33,28 +30,16 @@ def move_to_trash(doc_id):
         st.rerun()
 
 def delete_company_all(company_name):
-    # 1. 해당 기업 문서 찾기
     targets = [d for d in st.session_state['stock_db'] if d['company'] == company_name]
-    
     if targets:
-        # 2. 하나씩 휴지통으로 이동 (DB & Session)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         for doc in targets:
-            move_stock_to_trash(doc) # DB의 stock_trash로 이동
-            
-            # Session Trash에도 추가 (휴지통 탭에서 바로 보이게)
-            doc['deleted_at'] = now_str
-            st.session_state['stock_trash_db'].append(doc)
-            
+            move_stock_to_trash(doc)
             if doc['id'] in st.session_state.get('selected_doc_ids', []):
                 st.session_state['selected_doc_ids'].remove(doc['id'])
-        
-        # 3. Session 원본 리스트에서 제거
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
-        st.toast(f"🗑️ '{company_name}' 및 관련 문서 {len(targets)}건이 휴지통으로 이동되었습니다.")
+        st.toast(f"🗑️ '{company_name}' 및 관련 문서가 휴지통으로 이동되었습니다.")
     else:
         st.toast("삭제할 문서가 없습니다.")
-    
     time.sleep(1.0)
     st.rerun()
 
@@ -137,15 +122,21 @@ def render_stock_page():
                 f_kw = list(set(sel_kws + m_kw))
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
+                # [수정] DB 저장이 성공했는지 확인 후 리스트 갱신
                 if target_id:
                     update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
-                    for d in st.session_state['stock_db']:
-                        if d['id'] == target_id: d.update({"company": final_comp, "title": st.session_state.doc_title, "content": in_content, "keywords": f_kw, "created_at": now_str})
+                    # DB가 Single Source of Truth이므로 다시 로드 권장
+                    st.session_state['stock_db'] = load_stocks()
+                    st.success("수정되었습니다!")
                 else:
                     new_data = add_stock(final_comp, st.session_state.doc_title, in_content, f_kw)
-                    if new_data: st.session_state['stock_db'].append(new_data)
-                
-                st.success("저장되었습니다!")
+                    if new_data:
+                        st.session_state['stock_db'] = load_stocks() # 리스트 갱신
+                        st.success("저장되었습니다!")
+                    else:
+                        st.error("저장 실패. (로그 확인 필요)")
+                        st.stop()
+
                 st.session_state['stock_view_mode'] = 'list'
                 st.session_state['edit_target_id'] = None
                 if 'doc_manually_closed' in st.session_state: del st.session_state['doc_manually_closed']
@@ -198,7 +189,7 @@ def render_stock_page():
                             st.markdown(f"## {doc['title']}")
                             st.caption(f"{doc['created_at']} | {doc['company']}")
                         
-                        # [복사 버튼 수정] Popover 대신 즉시 복사 버튼 적용
+                        # [복사 버튼] Popover -> 즉시 복사
                         with h2:
                             if st.button("📋", key=f"cp_doc_{doc['id']}", help="내용 전체 복사"):
                                 full_text = f"[{doc['company']}] {doc['title']}\n키워드: {', '.join(doc['keywords'])}\n작성일: {doc['created_at']}\n\n{strip_html(doc['content'])}"
