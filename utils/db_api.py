@@ -3,13 +3,13 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta # [NEW] timedelta 추가
 import uuid
 import re
 import streamlit.components.v1 as components
 
 # ==========================================
-# GOOGLE SHEETS & DRIVE SETTINGS
+# GOOGLE SHEETS & DRIVE
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 CHUNK_SIZE = 45000
@@ -27,6 +27,13 @@ def get_workbook():
     try:
         return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
     except: return None
+
+# ==========================================
+# TIME HELPER (KOREA TIME)
+# ==========================================
+def get_kst_now():
+    """서버 시간(UTC)을 한국 시간(KST, UTC+9)으로 변환"""
+    return (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
 
 # ==========================================
 # CLIPBOARD & UTILS
@@ -71,62 +78,66 @@ def strip_html(html_content):
     clean = re.compile('<.*?>')
     return re.sub(clean, '', html_content)
 
+def is_date_format(text):
+    return bool(re.search(r'\d{2,4}[-.]\d{1,2}[-.]\d{1,2}', str(text)))
+
 # ==========================================
-# STOCK CRUD (Standard Schema Migration)
+# STOCK CRUD
 # ==========================================
 def load_stocks():
     wb = get_workbook()
     if not wb: return []
     try:
-        # 1. 메타데이터 시트 준비
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
         
-        # [정석 해결] 스키마 마이그레이션 (Schema Migration)
-        # 헤더를 읽어서 'content' 컬럼(구형 데이터)이 남아있다면 해당 열을 물리적으로 삭제합니다.
-        # 이렇게 하면 컬럼 밀림 현상과 50,000자 제한 에러가 동시에 해결됩니다.
+        # Schema Migration
         headers = ws_meta.row_values(1)
         if "content" in headers:
             col_idx = headers.index("content") + 1
             ws_meta.delete_columns(col_idx)
-            # 삭제 후 헤더 갱신을 위해 재로드하지 않고, gspread가 처리하도록 함.
-            # 다음 호출부터는 content 컬럼이 없으므로 안전함.
         
-        # 2. Key-Value 기반 레코드 로드 (순서가 섞여도 안전함)
-        meta_data = ws_meta.get_all_records()
+        raw_data = ws_meta.get_all_values()
+        if not raw_data: return []
         
-        # 3. 본문 청크 로드 및 조립
+        data_rows = raw_data[1:]
+        
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         chunk_data = ws_chunks.get_all_records()
-        
         content_map = {}
-        # index 기준 정렬
         sorted_chunks = sorted(chunk_data, key=lambda x: (str(x['id']), int(x['index'])))
         for row in sorted_chunks:
             doc_id = str(row['id'])
             if doc_id not in content_map: content_map[doc_id] = []
-            content_map[doc_id].append(str(row['content']))
+            content_map[doc_id].append(row['content'])
             
         stocks = []
-        for row in meta_data:
-            doc_id = str(row['id'])
+        for row in data_rows:
+            doc_id = str(row[0]) if len(row) > 0 else ""
+            company = row[1] if len(row) > 1 else ""
+            title = row[2] if len(row) > 2 else ""
+            kw_raw = str(row[3]) if len(row) > 3 else ""
+            created_at = str(row[4]) if len(row) > 4 else ""
+            
+            # [FIX] 키워드/날짜 보정
+            real_kws = []
+            if kw_raw:
+                candidates = [k.strip() for k in kw_raw.split(',') if k.strip()]
+                for cand in candidates:
+                    if not is_date_format(cand):
+                        real_kws.append(cand)
+                    else:
+                        if not created_at or not is_date_format(created_at):
+                            created_at = cand
+            
             full_content = "".join(content_map.get(doc_id, []))
             
-            # 키워드 파싱 (문자열 -> 리스트)
-            k_str = str(row.get('keywords', ''))
-            # 날짜 형식이 키워드 칸에 들어있는 경우 방어 (혹시 모를 오염 데이터 필터링)
-            kws = [k.strip() for k in k_str.split(',') if k.strip() and not re.match(r'\d{4}-\d{2}-\d{2}', k.strip())]
-            
             stocks.append({
-                "id": doc_id,
-                "company": str(row.get('company', '')),
-                "title": str(row.get('title', '')),
-                "content": full_content,
-                "keywords": kws,
-                "created_at": str(row.get('created_at', ''))
+                "id": doc_id, "company": company, "title": title,
+                "content": full_content, "keywords": real_kws, "created_at": created_at
             })
         return stocks
     except Exception as e:
-        st.error(f"데이터 로드 중 오류: {e}")
+        st.error(f"Stock 로드 오류: {e}")
         return []
 
 def add_stock(company, title, content, keywords):
@@ -135,18 +146,15 @@ def add_stock(company, title, content, keywords):
     try:
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now_str = get_kst_now() # [KST 적용]
         
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
-        # 저장 전 스키마 확인
-        headers = ws_meta.row_values(1)
-        if "content" in headers:
-            ws_meta.delete_columns(headers.index("content") + 1)
+        if "content" in ws_meta.row_values(1):
+             col_idx = ws_meta.row_values(1).index("content") + 1
+             ws_meta.delete_columns(col_idx)
 
-        # 메타데이터 저장
         ws_meta.append_row([new_id, company, title, kw_str, now_str])
         
-        # 내용 분할 저장
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         chunks = chunk_text(content)
         chunk_rows = [[new_id, i, chunk] for i, chunk in enumerate(chunks)]
@@ -165,54 +173,45 @@ def update_stock(doc_id, company, title, content, keywords):
         cell = ws_meta.find(str(doc_id))
         if cell:
             r = cell.row
-            # 컬럼 인덱스를 하드코딩하지 않고 헤더 기반으로 찾으면 더 안전하지만,
-            # 속도를 위해 현재 구조(id, comp, title, kw, date)를 가정하고 업데이트
             ws_meta.update_cell(r, 2, company)
             ws_meta.update_cell(r, 3, title)
             ws_meta.update_cell(r, 4, ",".join(keywords))
-            ws_meta.update_cell(r, 5, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            ws_meta.update_cell(r, 5, get_kst_now()) # [KST 적용]
             
         ws_chunks = wb.worksheet("stock_chunks")
-        all_vals = ws_chunks.get_all_values()
-        if len(all_vals) > 1:
-            header = all_vals[0]
-            # 기존 ID 제외한 나머지 유지
-            new_rows = [r for r in all_vals[1:] if str(r[0]) != str(doc_id)]
-            
+        all_chunks = ws_chunks.get_all_values()
+        if len(all_chunks) > 1:
+            header = all_chunks[0]
+            data = all_chunks[1:]
+            new_data = [row for row in data if str(row[0]) != str(doc_id)]
             chunks = chunk_text(content)
             for i, chunk in enumerate(chunks):
-                new_rows.append([str(doc_id), i, chunk])
-            
+                new_data.append([str(doc_id), i, chunk])
             ws_chunks.clear()
             ws_chunks.append_row(header)
-            if new_rows: ws_chunks.append_rows(new_rows)
+            if new_data: ws_chunks.append_rows(new_data)
     except Exception as e: st.error(f"수정 실패: {e}")
 
 def move_stock_to_trash(doc_data):
     wb = get_workbook()
     if not wb: return
     try:
-        # 휴지통 시트 준비
         ws_trash_meta = get_or_create_sheet(wb, "stock_trash", ["id", "company", "title", "keywords", "created_at", "deleted_at"])
         ws_trash_chunks = get_or_create_sheet(wb, "stock_trash_chunks", ["id", "index", "content"])
         
-        del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        del_time = get_kst_now() # [KST 적용]
         kw_str = ",".join(doc_data['keywords'])
         
-        # 메타 이동
         ws_trash_meta.append_row([doc_data['id'], doc_data['company'], doc_data['title'], kw_str, doc_data['created_at'], del_time])
         
-        # 내용 이동 (재분할)
         chunks = chunk_text(doc_data['content'])
         chunk_rows = [[doc_data['id'], i, chunk] for i, chunk in enumerate(chunks)]
         ws_trash_chunks.append_rows(chunk_rows)
         
-        # 원본 삭제 (메타)
         ws_meta = wb.worksheet("stocks")
         cell = ws_meta.find(str(doc_data['id']))
         if cell: ws_meta.delete_rows(cell.row)
         
-        # 원본 삭제 (청크 - 필터링 방식)
         ws_chunks = wb.worksheet("stock_chunks")
         all_vals = ws_chunks.get_all_values()
         if len(all_vals) > 1:
@@ -222,7 +221,6 @@ def move_stock_to_trash(doc_data):
             ws_chunks.clear()
             ws_chunks.append_row(header)
             if kept_rows: ws_chunks.append_rows(kept_rows)
-            
     except Exception as e: st.error(f"삭제 실패: {e}")
 
 def load_stock_trash():
@@ -236,10 +234,11 @@ def load_stock_trash():
         chunk_data = ws_chunks.get_all_records()
         
         content_map = {}
-        for row in chunk_data:
+        sorted_chunks = sorted(chunk_data, key=lambda x: (str(x['id']), int(x['index'])))
+        for row in sorted_chunks:
             doc_id = str(row['id'])
             if doc_id not in content_map: content_map[doc_id] = []
-            content_map[doc_id].append(str(row['content']))
+            content_map[doc_id].append(row['content'])
             
         trash_list = []
         for row in meta_data:
@@ -284,7 +283,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 # ==========================================
-# SETTINGS & NODE & AI (No Changes)
+# SETTINGS & NODE & AI
 # ==========================================
 def save_setting_to_db(key, value):
     wb = get_workbook()
@@ -322,7 +321,7 @@ def add_node(label, group, summary, keywords):
     try:
         new_id = str(uuid.uuid4())[:8]
         kw_str = ",".join(keywords)
-        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now_ts = get_kst_now() # [KST 적용]
         wb.sheet1.append_row([new_id, label, group, summary, kw_str, now_ts])
         return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
     except: return None
@@ -349,7 +348,7 @@ def move_to_trash(node_id, node_data):
         except: 
             trash_sheet = wb.add_worksheet(title="trash", rows=100, cols=7)
             trash_sheet.append_row(["id", "label", "group", "summary", "keywords", "created_at", "deleted_at"])
-        del_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        del_time = get_kst_now() # [KST 적용]
         k_str = ",".join(node_data['keywords'])
         trash_sheet.append_row([node_data['id'], node_data['label'], node_data['group'], node_data['summary'], k_str, node_data['timestamp'], del_time])
         main_sheet = wb.sheet1
