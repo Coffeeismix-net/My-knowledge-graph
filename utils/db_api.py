@@ -31,7 +31,7 @@ def get_workbook():
     except: return None
 
 # ==========================================
-# CLIPBOARD HELPER
+# CLIPBOARD & UTILS
 # ==========================================
 def copy_to_clipboard(text):
     escaped_text = json.dumps(text)
@@ -68,31 +68,42 @@ def get_or_create_sheet(wb, title, cols):
         ws.append_row(cols)
         return ws
 
+def strip_html(html_content):
+    if not html_content: return ""
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', html_content)
+
+# [NEW] 날짜 형식인지 확인하는 정규식
+def is_date_format(text):
+    # YYYY-MM-DD or YY-MM-DD or YYYY.MM.DD patterns
+    return bool(re.search(r'\d{2,4}[-.]\d{1,2}[-.]\d{1,2}', str(text)))
+
 # ==========================================
-# STOCK CRUD (자동 복구 로직 포함)
+# STOCK CRUD (Smart Loading)
 # ==========================================
 def load_stocks():
     wb = get_workbook()
     if not wb: return []
     try:
-        # 1. 메타데이터 시트 확인
+        # 1. 메타데이터 로드
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
         
-        # [AUTO-FIX] 레거시 컬럼('content') 감지 및 삭제 로직
+        # [AUTO-FIX] 레거시 컬럼('content') 삭제
         headers = ws_meta.row_values(1)
         if "content" in headers:
-            # content 컬럼 인덱스 찾기 (1부터 시작)
             col_idx = headers.index("content") + 1
             ws_meta.delete_columns(col_idx)
-            # st.toast("🔄 DB 스키마가 최신 버전으로 자동 업데이트되었습니다.")
-            # 삭제 후 헤더 다시 로드 불필요 (다음 호출부터 정상화)
         
-        meta_data = ws_meta.get_all_records()
+        # [FIX] get_all_records 대신 get_all_values 사용 (인덱스 기반 로딩으로 더 안전하게)
+        raw_data = ws_meta.get_all_values()
+        if not raw_data: return []
         
-        # 2. 청크 로드 및 조립
+        header = raw_data[0]
+        data_rows = raw_data[1:]
+        
+        # 2. 청크 로드
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         chunk_data = ws_chunks.get_all_records()
-        
         content_map = {}
         sorted_chunks = sorted(chunk_data, key=lambda x: (str(x['id']), int(x['index'])))
         for row in sorted_chunks:
@@ -101,24 +112,37 @@ def load_stocks():
             content_map[doc_id].append(row['content'])
             
         stocks = []
-        for row in meta_data:
-            doc_id = str(row['id'])
+        for row in data_rows:
+            # 안전하게 인덱스 접근 (부족하면 빈 문자열)
+            doc_id = str(row[0]) if len(row) > 0 else ""
+            company = row[1] if len(row) > 1 else ""
+            title = row[2] if len(row) > 2 else ""
+            kw_raw = str(row[3]) if len(row) > 3 else ""
+            created_at = str(row[4]) if len(row) > 4 else ""
+            
+            # [CRITICAL FIX] 키워드 자리에 날짜가 들어있는 경우 보정
+            real_kws = []
+            if kw_raw:
+                # 콤마로 분리 후, 날짜 형식이 아닌 것만 키워드로 인정
+                candidates = [k.strip() for k in kw_raw.split(',') if k.strip()]
+                for cand in candidates:
+                    if not is_date_format(cand): # 날짜가 아니면 키워드
+                        real_kws.append(cand)
+                    else:
+                        # 키워드 자리에 날짜가 있고, created_at이 비었거나 이상하면 이걸 날짜로 씀
+                        if not created_at or not is_date_format(created_at):
+                            created_at = cand
+            
+            # 내용 조립
             full_content = "".join(content_map.get(doc_id, []))
             
-            k_str = str(row.get('keywords', ''))
-            kws = [k.strip() for k in k_str.split(',')] if k_str else []
-            
             stocks.append({
-                "id": doc_id,
-                "company": row['company'],
-                "title": row['title'],
-                "content": full_content,
-                "keywords": kws,
-                "created_at": str(row['created_at'])
+                "id": doc_id, "company": company, "title": title,
+                "content": full_content, "keywords": real_kws, "created_at": created_at
             })
         return stocks
     except Exception as e:
-        st.error(f"데이터 로드 중 오류: {e}")
+        st.error(f"Stock 로드 오류: {e}")
         return []
 
 def add_stock(company, title, content, keywords):
@@ -130,7 +154,7 @@ def add_stock(company, title, content, keywords):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
-        # 혹시 모를 레거시 컬럼 체크 (안전장치)
+        # 레거시 컬럼 정리
         if "content" in ws_meta.row_values(1):
              col_idx = ws_meta.row_values(1).index("content") + 1
              ws_meta.delete_columns(col_idx)
@@ -265,7 +289,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 # ==========================================
-# SETTINGS & NODE & AI & UTILS
+# SETTINGS & NODE & AI (기존 코드 유지)
 # ==========================================
 def save_setting_to_db(key, value):
     wb = get_workbook()
@@ -371,11 +395,6 @@ def ai_process(text):
         data = json.loads(res.text.replace('```json','').replace('```','').strip())
         return {"success": True, "summary": data.get('summary',''), "keywords": data.get('keywords',''), "error": None}
     except Exception as e: return {"success": False, "error": str(e)}
-
-def strip_html(html_content):
-    if not html_content: return ""
-    clean = re.compile('<.*?>')
-    return re.sub(clean, '', html_content)
 
 COLOR_PALETTE = ["#FF0055", "#00FFC2", "#00ADB5", "#9D00FF", "#FFE600", "#FF8800", "#FF3333", "#33FF33", "#3333FF", "#FF33FF", "#33FFFF", "#FFFF33", "#FF5733", "#33FF57", "#3357FF", "#A0522D", "#8A2BE2", "#5F9EA0", "#D2691E", "#FF7F50"]
 
