@@ -216,11 +216,6 @@ def render_stock_page():
                                 st.rerun()
                         
                         st.divider()
-                        
-                        # [개선] 평소엔 숨겨두고 클릭 시 열리는 전체 텍스트 복사 영역
-                        with st.expander("📋 전체 내용 복사 텍스트 보기 (수동 복사용)", expanded=False):
-                            full_copy_text = f"[{doc['company']}] {doc['title']}\nKeywords: {', '.join(doc['keywords'])}\nDate: {doc['created_at']}\n\n{strip_html(doc['content'])}"
-                            st.code(full_copy_text, language='text')
-                            
+                        # [삭제됨] 수동 복사 Expander 삭제
                         st.markdown(doc['content'], unsafe_allow_html=True)
         else: st.info("문서를 선택하세요.")
