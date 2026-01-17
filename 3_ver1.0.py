@@ -6,7 +6,7 @@ import time
 from utils.db_api import load_nodes, load_trash, restore_node, permanent_delete, get_workbook, load_stock_trash, restore_stock, permanent_delete_stock
 from modules.stock_ui import render_stock_page
 from modules.node_ui import render_node_page, render_sidebar
-from modules.valuechain_ui import render_valuechain_page # [NEW]
+from modules.valuechain_ui import render_valuechain_page
 
 # ==========================================
 # CONFIG & STYLE
@@ -45,7 +45,7 @@ def init_session_state():
         'logged_in': False, 'menu_mode': "Knowledge Graph", 'nodes_db': [], 'workspace_nodes': [],
         'selected_keyword': None, 'temp_analysis': None, 'search_history': [], 'last_selection': None, 'card_stack': [],
         'phy_active': True, 'phy_damping': 0.9, 'phy_repulsion': -1000, 'phy_len': 200, 'phy_overlap': True,
-        'settings_loaded': False, 'stock_view_mode': 'list'
+        'settings_loaded': False, 'stock_view_mode': 'list', 'vc_mode': 'list' # [NEW] vc_mode 초기화 추가
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -104,9 +104,17 @@ else:
                 if st.button("List", key="nav_s_l", use_container_width=True): st.session_state['menu_mode'] = "Stock Analysis"; st.session_state['stock_view_mode'] = "list"; st.rerun()
                 if st.button("Add", key="nav_s_a", use_container_width=True): st.session_state['menu_mode'] = "Stock Analysis"; st.session_state['stock_view_mode'] = "add"; st.session_state['edit_target_id'] = None; st.rerun()
         
-        # [NEW] Value Chain Menu
-        if menu_cols[3].button("Chain", key="nav_vc", use_container_width=True):
-            st.session_state['menu_mode'] = "Value Chain"; st.rerun()
+        # [NEW] Chain Menu (Popover)
+        with menu_cols[3]:
+            with st.popover("Chain", use_container_width=True):
+                if st.button("List", key="nav_vc_l", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Value Chain"
+                    st.session_state['vc_mode'] = 'list'
+                    st.rerun()
+                if st.button("Add", key="nav_vc_a", use_container_width=True): 
+                    st.session_state['menu_mode'] = "Value Chain"
+                    st.session_state['vc_mode'] = 'add'
+                    st.rerun()
 
         # Trash & Out
         if menu_cols[4].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
@@ -125,7 +133,6 @@ else:
             else: st.warning("Stock Module Error")
             
         elif current_mode == "Value Chain":
-            # [NEW] Value Chain Renderer
             render_valuechain_page(main)
             
         elif current_mode == "Trash Can":
