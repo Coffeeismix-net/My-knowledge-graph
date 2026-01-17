@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta # [NEW]
+from datetime import datetime, timedelta
 import time
 from utils.style import get_common_style
 from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
@@ -24,7 +24,7 @@ def move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
         move_stock_to_trash(target_doc)
-        target_doc['deleted_at'] = get_kst_now_str() # [KST]
+        target_doc['deleted_at'] = get_kst_now_str()
         st.session_state['stock_trash_db'].append(target_doc)
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['id'] != doc_id]
         if doc_id in st.session_state.get('selected_doc_ids', []):
@@ -69,6 +69,7 @@ def render_stock_page():
     grouped = pd.DataFrame()
     
     if not df.empty:
+        # [중요] 날짜 변환 (여기서 문자열 -> Timestamp 객체로 바뀜)
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
         df = df.sort_values(by='created_at', ascending=False)
@@ -124,7 +125,6 @@ def render_stock_page():
             else:
                 m_kw = [k.strip() for k in manual_kws.split(',') if k.strip()]
                 f_kw = list(set(sel_kws + m_kw))
-                now_str = get_kst_now_str() # [KST]
                 
                 if target_id:
                     update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
@@ -168,12 +168,11 @@ def render_stock_page():
                                         st.rerun()
                                 with r2:
                                     k_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                                    # 날짜 포맷 (년.월.일)
-                                    try: 
-                                        d_obj = datetime.strptime(doc['created_at'], "%Y-%m-%d %H:%M")
-                                        d_str = d_obj.strftime('%y.%m.%d')
-                                    except: 
-                                        d_str = doc['created_at'][:10]
+                                    # [FIX] TypeError 해결: doc['created_at']은 Timestamp 객체임
+                                    try:
+                                        d_str = doc['created_at'].strftime('%y.%m.%d')
+                                    except:
+                                        d_str = str(doc['created_at'])[:10] # 만약의 경우를 대비한 Fallback
                                     
                                     st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{k_html}<span class='date-label'>{d_str}</span></div>", unsafe_allow_html=True)
                                 with r3:
@@ -189,6 +188,7 @@ def render_stock_page():
         sel_ids = st.session_state.get('selected_doc_ids', [])
         if sel_ids:
             for i, doc_id in enumerate(sel_ids):
+                # 뷰어에서는 원본 리스트(dict)를 참조하므로 created_at은 문자열임
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
