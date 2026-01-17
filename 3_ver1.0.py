@@ -6,9 +6,10 @@ import time
 from utils.db_api import load_nodes, load_trash, restore_node, permanent_delete, get_workbook, load_stock_trash, restore_stock, permanent_delete_stock
 from modules.stock_ui import render_stock_page
 from modules.node_ui import render_node_page, render_sidebar
+from modules.valuechain_ui import render_valuechain_page # [NEW]
 
 # ==========================================
-# CONFIG
+# CONFIG & STYLE
 # ==========================================
 st.set_page_config(layout="wide", page_title="나만의 지식 센터", page_icon="🔗")
 
@@ -51,7 +52,6 @@ def init_session_state():
 
 init_session_state()
 
-# Settings Load
 if not st.session_state['settings_loaded']:
     wb = get_workbook()
     if wb:
@@ -70,7 +70,7 @@ if not st.session_state['settings_loaded']:
 if not st.session_state['nodes_db']: st.session_state['nodes_db'] = load_nodes()
 
 # ==========================================
-# MAIN
+# MAIN ROUTING
 # ==========================================
 if not st.session_state['logged_in']:
     st.markdown("<br><br><h1 style='text-align: center;'>🔗 나만의 지식 센터</h1><br>", unsafe_allow_html=True)
@@ -88,18 +88,29 @@ else:
     render_sidebar(left)
     
     with main:
-        menu_cols = st.columns([6, 1, 1, 1, 1]) 
+        # [MENU BAR]
+        menu_cols = st.columns([5, 1, 1, 1, 1, 1]) 
+        
+        # Node Menu
         with menu_cols[1]:
             with st.popover("Node", use_container_width=True):
                 if st.button("Graph", key="nav_n_g", use_container_width=True): st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
                 if st.button("List", key="nav_n_l", use_container_width=True): st.session_state['menu_mode'] = "List View"; st.rerun()
                 if st.button("Add", key="nav_n_a", use_container_width=True): st.session_state['menu_mode'] = "Add Data"; st.rerun()
+        
+        # Stock Menu
         with menu_cols[2]:
             with st.popover("Stock", use_container_width=True):
                 if st.button("List", key="nav_s_l", use_container_width=True): st.session_state['menu_mode'] = "Stock Analysis"; st.session_state['stock_view_mode'] = "list"; st.rerun()
                 if st.button("Add", key="nav_s_a", use_container_width=True): st.session_state['menu_mode'] = "Stock Analysis"; st.session_state['stock_view_mode'] = "add"; st.session_state['edit_target_id'] = None; st.rerun()
-        if menu_cols[3].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
-        if menu_cols[4].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
+        
+        # [NEW] Value Chain Menu
+        if menu_cols[3].button("Chain", key="nav_vc", use_container_width=True):
+            st.session_state['menu_mode'] = "Value Chain"; st.rerun()
+
+        # Trash & Out
+        if menu_cols[4].button("Trash", key="nav_trash", use_container_width=True): st.session_state['menu_mode'] = "Trash Can"; st.rerun()
+        if menu_cols[5].button("Out", key="nav_out", use_container_width=True): st.session_state['logged_in'] = False; st.rerun()
 
         st.markdown(f"<div class='tight-header' style='text-align: right;'>📂 {st.session_state['menu_mode']}</div>", unsafe_allow_html=True)
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
@@ -113,10 +124,12 @@ else:
             if render_stock_page: render_stock_page()
             else: st.warning("Stock Module Error")
             
+        elif current_mode == "Value Chain":
+            # [NEW] Value Chain Renderer
+            render_valuechain_page(main)
+            
         elif current_mode == "Trash Can":
             st.markdown("### 🗑️ 휴지통")
-            
-            # [1] Node 휴지통
             st.markdown("#### 1. 지식 그래프 (Nodes)")
             trash_nodes = load_trash()
             if trash_nodes:
@@ -135,7 +148,6 @@ else:
             
             st.divider()
             
-            # [2] Stock 휴지통
             st.markdown("#### 2. 기업 분석 (Stocks)")
             trash_stocks = load_stock_trash()
             if trash_stocks:
@@ -146,9 +158,7 @@ else:
                         c1.caption(f"Deleted: {row['deleted_at']}")
                         if c2.button("♻️ 복구", key=f"res_s_{row['id']}", use_container_width=True):
                             restore_stock(row)
-                            # 세션도 갱신 (리스트에 바로 뜨게)
-                            if 'stock_db' in st.session_state:
-                                st.session_state['stock_db'].append(row)
+                            if 'stock_db' in st.session_state: st.session_state['stock_db'].append(row)
                             st.success("복구됨"); time.sleep(0.5); st.rerun()
                         if c3.button("🔥 삭제", key=f"del_s_{row['id']}", type="primary", use_container_width=True):
                             permanent_delete_stock(row['id']); st.warning("영구 삭제됨"); time.sleep(0.5); st.rerun()
