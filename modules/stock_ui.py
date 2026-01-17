@@ -122,16 +122,14 @@ def render_stock_page():
                 f_kw = list(set(sel_kws + m_kw))
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                 
-                # [수정] DB 저장이 성공했는지 확인 후 리스트 갱신
                 if target_id:
                     update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
-                    # DB가 Single Source of Truth이므로 다시 로드 권장
                     st.session_state['stock_db'] = load_stocks()
                     st.success("수정되었습니다!")
                 else:
                     new_data = add_stock(final_comp, st.session_state.doc_title, in_content, f_kw)
                     if new_data:
-                        st.session_state['stock_db'] = load_stocks() # 리스트 갱신
+                        st.session_state['stock_db'] = load_stocks()
                         st.success("저장되었습니다!")
                     else:
                         st.error("저장 실패. (로그 확인 필요)")
@@ -184,29 +182,45 @@ def render_stock_page():
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
-                        h1, h2, h3 = st.columns([9, 0.5, 0.5])
-                        with h1: 
-                            st.markdown(f"## {doc['title']}")
-                            st.caption(f"{doc['created_at']} | {doc['company']}")
+                        # [NEW] 헤더 레이아웃 통합: 제목 | 정보 | 키워드 한 줄 배치
+                        h1, h2, h3 = st.columns([8, 1, 1])
                         
-                        # [복사 버튼] Popover -> 즉시 복사
+                        with h1:
+                            # 키워드 HTML 생성
+                            keywords_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
+                            
+                            # 통합 HTML (Flexbox 사용)
+                            title_html = f"""
+                            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <h2 style="margin: 0; padding: 0;">{doc['title']}</h2>
+                                <span style="color: #888; font-size: 0.9rem; white-space: nowrap;">
+                                    {doc['company']} | {doc['created_at']}
+                                </span>
+                                <span style="margin-left: 5px;">{keywords_html}</span>
+                            </div>
+                            """
+                            st.markdown(title_html, unsafe_allow_html=True)
+                        
+                        # 복사 버튼
                         with h2:
-                            if st.button("📋", key=f"cp_doc_{doc['id']}", help="내용 전체 복사"):
+                            if st.button("📋", key=f"cp_doc_{doc['id']}", help="내용 전체 복사", use_container_width=True):
                                 full_text = f"[{doc['company']}] {doc['title']}\n키워드: {', '.join(doc['keywords'])}\n작성일: {doc['created_at']}\n\n{strip_html(doc['content'])}"
                                 copy_to_clipboard(full_text)
                                 st.toast("클립보드에 복사되었습니다!")
 
+                        # 닫기 버튼
                         with h3:
-                            if st.button("✕", key=f"cl_{doc['id']}", help="닫기"):
+                            if st.button("✕", key=f"cl_{doc['id']}", help="닫기", use_container_width=True):
                                 st.session_state['selected_doc_ids'].remove(doc['id'])
                                 st.session_state['doc_manually_closed'] = True
                                 st.rerun()
                         
-                        cols = st.columns(10)
-                        for idx, kw in enumerate(doc['keywords']):
-                            if idx < 10:
-                                if cols[idx].button(f"#{kw}", key=f"k_{doc['id']}_{idx}"):
-                                    st.session_state['menu_mode'] = "Knowledge Graph"; st.session_state['selected_keyword'] = kw; st.rerun()
                         st.divider()
+                        
+                        # [개선] 평소엔 숨겨두고 클릭 시 열리는 전체 텍스트 복사 영역
+                        with st.expander("📋 전체 내용 복사 텍스트 보기 (수동 복사용)", expanded=False):
+                            full_copy_text = f"[{doc['company']}] {doc['title']}\nKeywords: {', '.join(doc['keywords'])}\nDate: {doc['created_at']}\n\n{strip_html(doc['content'])}"
+                            st.code(full_copy_text, language='text')
+                            
                         st.markdown(doc['content'], unsafe_allow_html=True)
         else: st.info("문서를 선택하세요.")
