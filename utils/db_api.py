@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 # GOOGLE SHEETS & DRIVE
 # ==========================================
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-CHUNK_SIZE = 45000  # 구글시트 셀 한계(50000)를 고려한 안전한 분할 크기
+CHUNK_SIZE = 45000
 
 @st.cache_resource
 def get_db_client():
@@ -27,12 +27,11 @@ def get_db_client():
 def get_workbook():
     client = get_db_client()
     try:
-        # [주의] 사용 중인 스프레드시트 Key 확인
         return client.open_by_key("1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc") if client else None
     except: return None
 
 # ==========================================
-# HELPERS
+# CLIPBOARD HELPER
 # ==========================================
 def copy_to_clipboard(text):
     escaped_text = json.dumps(text)
@@ -59,12 +58,10 @@ def copy_to_clipboard(text):
     components.html(js_code, height=0)
 
 def chunk_text(text):
-    """긴 텍스트를 CHUNK_SIZE 단위로 자릅니다."""
     if not text: return [""]
     return [text[i:i+CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE)]
 
 def get_or_create_sheet(wb, title, cols):
-    """시트가 없으면 만들고 있으면 반환"""
     try: return wb.worksheet(title)
     except:
         ws = wb.add_worksheet(title=title, rows=100, cols=len(cols))
@@ -72,32 +69,37 @@ def get_or_create_sheet(wb, title, cols):
         return ws
 
 # ==========================================
-# STOCK CRUD (분할 저장 시스템)
+# STOCK CRUD (자동 복구 로직 포함)
 # ==========================================
 def load_stocks():
     wb = get_workbook()
     if not wb: return []
     try:
-        # 1. 메타데이터 로드
+        # 1. 메타데이터 시트 확인
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
+        
+        # [AUTO-FIX] 레거시 컬럼('content') 감지 및 삭제 로직
+        headers = ws_meta.row_values(1)
+        if "content" in headers:
+            # content 컬럼 인덱스 찾기 (1부터 시작)
+            col_idx = headers.index("content") + 1
+            ws_meta.delete_columns(col_idx)
+            # st.toast("🔄 DB 스키마가 최신 버전으로 자동 업데이트되었습니다.")
+            # 삭제 후 헤더 다시 로드 불필요 (다음 호출부터 정상화)
+        
         meta_data = ws_meta.get_all_records()
         
-        # 2. 청크 데이터 로드
+        # 2. 청크 로드 및 조립
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         chunk_data = ws_chunks.get_all_records()
         
-        # 3. 청크 조립 (ID별로 합치기)
         content_map = {}
-        # DataFrame을 쓰면 더 빠르지만, 의존성 최소화를 위해 순수 파이썬으로 처리
-        # (데이터가 아주 많아지면 pandas로 최적화 가능)
         sorted_chunks = sorted(chunk_data, key=lambda x: (str(x['id']), int(x['index'])))
-        
         for row in sorted_chunks:
             doc_id = str(row['id'])
             if doc_id not in content_map: content_map[doc_id] = []
             content_map[doc_id].append(row['content'])
             
-        # 4. 최종 리스트 생성
         stocks = []
         for row in meta_data:
             doc_id = str(row['id'])
@@ -110,13 +112,13 @@ def load_stocks():
                 "id": doc_id,
                 "company": row['company'],
                 "title": row['title'],
-                "content": full_content, # 조립된 전체 내용
+                "content": full_content,
                 "keywords": kws,
                 "created_at": str(row['created_at'])
             })
         return stocks
     except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {e}")
+        st.error(f"데이터 로드 중 오류: {e}")
         return []
 
 def add_stock(company, title, content, keywords):
@@ -127,11 +129,14 @@ def add_stock(company, title, content, keywords):
         kw_str = ",".join(keywords)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        # 1. 메타데이터 저장
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
+        # 혹시 모를 레거시 컬럼 체크 (안전장치)
+        if "content" in ws_meta.row_values(1):
+             col_idx = ws_meta.row_values(1).index("content") + 1
+             ws_meta.delete_columns(col_idx)
+
         ws_meta.append_row([new_id, company, title, kw_str, now_str])
         
-        # 2. 내용 분할 저장
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         chunks = chunk_text(content)
         chunk_rows = [[new_id, i, chunk] for i, chunk in enumerate(chunks)]
@@ -139,14 +144,13 @@ def add_stock(company, title, content, keywords):
         
         return {"id": new_id, "company": company, "title": title, "content": content, "keywords": keywords, "created_at": now_str}
     except Exception as e:
-        st.error(f"저장 실패 (용량 초과 등): {e}")
+        st.error(f"저장 실패: {e}")
         return None
 
 def update_stock(doc_id, company, title, content, keywords):
     wb = get_workbook()
     if not wb: return
     try:
-        # 1. 메타데이터 업데이트
         ws_meta = wb.worksheet("stocks")
         cell = ws_meta.find(str(doc_id))
         if cell:
@@ -156,40 +160,24 @@ def update_stock(doc_id, company, title, content, keywords):
             ws_meta.update_cell(r, 4, ",".join(keywords))
             ws_meta.update_cell(r, 5, datetime.now().strftime("%Y-%m-%d %H:%M"))
             
-        # 2. 내용 업데이트 (기존 청크 삭제 후 새로 추가)
-        # GSheet API로는 특정 ID의 행만 골라 지우기가 까다로우므로, 
-        # 실제로는 '덮어쓰기'가 복잡함. 여기서는 간단히 '기존 ID 청크들을 찾아 빈칸으로 만들고 새거 추가' 방식 사용
-        # (더 효율적인 방법: Batch update로 row delete. 하지만 코드 복잡도 증가)
-        # 안전한 방법: stock_chunks에서 해당 ID를 가진 행을 찾아 삭제.
-        
         ws_chunks = wb.worksheet("stock_chunks")
-        # 모든 데이터를 가져와서 해당 ID가 아닌 것만 남기고 다시 씀 (데이터가 적을 때 유효)
-        # 데이터가 많으면 이 방식은 느림. 하지만 지금은 안정성 우선.
         all_chunks = ws_chunks.get_all_values()
-        header = all_chunks[0]
-        data = all_chunks[1:]
-        
-        # 유지할 데이터 필터링
-        new_data = [row for row in data if str(row[0]) != str(doc_id)]
-        
-        # 새 청크 추가
-        chunks = chunk_text(content)
-        for i, chunk in enumerate(chunks):
-            new_data.append([str(doc_id), i, chunk])
-            
-        # 시트 클리어 후 다시 쓰기 (확실한 업데이트)
-        ws_chunks.clear()
-        ws_chunks.append_row(header)
-        if new_data:
-            ws_chunks.append_rows(new_data)
-            
+        if len(all_chunks) > 1:
+            header = all_chunks[0]
+            data = all_chunks[1:]
+            new_data = [row for row in data if str(row[0]) != str(doc_id)]
+            chunks = chunk_text(content)
+            for i, chunk in enumerate(chunks):
+                new_data.append([str(doc_id), i, chunk])
+            ws_chunks.clear()
+            ws_chunks.append_row(header)
+            if new_data: ws_chunks.append_rows(new_data)
     except Exception as e: st.error(f"수정 실패: {e}")
 
 def move_stock_to_trash(doc_data):
     wb = get_workbook()
     if not wb: return
     try:
-        # 1. 휴지통으로 이동 (메타 + 청크)
         ws_trash_meta = get_or_create_sheet(wb, "stock_trash", ["id", "company", "title", "keywords", "created_at", "deleted_at"])
         ws_trash_chunks = get_or_create_sheet(wb, "stock_trash_chunks", ["id", "index", "content"])
         
@@ -202,13 +190,10 @@ def move_stock_to_trash(doc_data):
         chunk_rows = [[doc_data['id'], i, chunk] for i, chunk in enumerate(chunks)]
         ws_trash_chunks.append_rows(chunk_rows)
         
-        # 2. 원본 삭제
-        # 메타 삭제
         ws_meta = wb.worksheet("stocks")
         cell = ws_meta.find(str(doc_data['id']))
         if cell: ws_meta.delete_rows(cell.row)
         
-        # 청크 삭제 (필터링 재작성 방식)
         ws_chunks = wb.worksheet("stock_chunks")
         all_vals = ws_chunks.get_all_values()
         if len(all_vals) > 1:
@@ -218,10 +203,8 @@ def move_stock_to_trash(doc_data):
             ws_chunks.clear()
             ws_chunks.append_row(header)
             if kept_rows: ws_chunks.append_rows(kept_rows)
-            
     except Exception as e: st.error(f"삭제 실패: {e}")
 
-# [휴지통 로드] (청크 조립 필요)
 def load_stock_trash():
     wb = get_workbook()
     if not wb: return []
@@ -260,7 +243,6 @@ def restore_stock(stock_row):
     wb = get_workbook()
     if not wb: return
     try:
-        # 복구 = add_stock 로직 + 영구 삭제
         add_stock(stock_row['company'], stock_row['title'], stock_row['content'], stock_row['keywords'])
         permanent_delete_stock(stock_row['id'])
     except: pass
@@ -269,12 +251,10 @@ def permanent_delete_stock(doc_id):
     wb = get_workbook()
     if not wb: return
     try:
-        # 메타 삭제
         ws_trash = wb.worksheet("stock_trash")
         cell = ws_trash.find(str(doc_id))
         if cell: ws_trash.delete_rows(cell.row)
         
-        # 청크 삭제
         ws_chunks = wb.worksheet("stock_trash_chunks")
         all_vals = ws_chunks.get_all_values()
         if len(all_vals) > 1:
@@ -285,7 +265,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 # ==========================================
-# SETTINGS & NODE & AI (기존 코드 유지)
+# SETTINGS & NODE & AI & UTILS
 # ==========================================
 def save_setting_to_db(key, value):
     wb = get_workbook()
