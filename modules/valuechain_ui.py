@@ -12,48 +12,50 @@ def render_tree_node(nodes, level=0):
     JSON의 'children'을 순회하며 폴더(Expander)와 파일(Text/Button)을 그립니다.
     재귀 함수를 사용하여 폴더 안에 폴더가 계속 들어갈 수 있습니다.
     """
+    if not nodes: return
+
     for node in nodes:
-        # 아이콘 및 스타일 설정
-        indent = "&nbsp;" * (level * 4) # 들여쓰기 시각적 효과
-        
         # [CASE 1] 폴더 (Folder) -> Expander로 구현
         if node.get('type') == 'folder':
             # 폴더 아이콘과 이름
-            folder_label = f"📂 {node['name']}"
+            folder_label = f"📂 {node.get('name', 'Unnamed Folder')}"
             
-            # Streamlit Expander 사용 (기본적으로 닫혀있음, expanded=True로 하면 열림)
-            with st.expander(folder_label, expanded=False):
+            # Streamlit Expander 사용
+            with st.expander(folder_label, expanded=True): # 기본적으로 펼쳐서 보여줌
                 # 자식이 있다면 재귀 호출 (Level + 1)
                 if 'children' in node and node['children']:
                     render_tree_node(node['children'], level + 1)
                 else:
-                    st.caption(f"{indent} (비어있음)")
+                    st.caption("(비어있음)")
 
         # [CASE 2] 파일 (File/Item) -> 기업 정보 표시
         else:
-            # 파일 아이콘 (기업)
+            # 파일 정보 추출
+            name = node.get('name', 'Unknown')
             code = node.get('code', '')
             desc = node.get('desc', '')
             
-            # 레이아웃: [아이콘+이름] | [설명] | [복사]
-            c1, c2 = st.columns([6, 4])
+            # 디자인: [종목명(코드)] - [설명]
+            # Streamlit 컬럼으로 깔끔하게 배치
+            c1, c2 = st.columns([4, 6])
             
             with c1:
-                # 종목 코드가 있으면 강조 표시
                 if code:
-                    st.markdown(f"📄 **{node['name']}** <span style='color:#888; font-size:0.8em;'>({code})</span>", unsafe_allow_html=True)
+                    # 종목 코드가 있으면 굵게 표시
+                    st.markdown(f"📄 **{name}** <span style='color:#888; font-size:0.8em;'>({code})</span>", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"📄 **{node['name']}**", unsafe_allow_html=True)
+                    st.markdown(f"📄 **{name}**", unsafe_allow_html=True)
             
             with c2:
                 if desc:
-                    st.caption(desc)
+                    st.markdown(f"<span style='color:#bbb;'>{desc}</span>", unsafe_allow_html=True)
 
-            # 구분선 (너무 많으면 지저분하므로 살짝만 띄움)
-            st.markdown("<div style='margin-bottom: 4px;'></div>", unsafe_allow_html=True)
+            # 항목 간 간격 미세 조정
+            st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #333;'>", unsafe_allow_html=True)
 
 # [MAIN RENDERER]
 def render_valuechain_page(main_col):
+    # 데이터 초기화
     if 'vc_list' not in st.session_state:
         st.session_state['vc_list'] = load_valuechains()
     if 'vc_mode' not in st.session_state:
@@ -67,8 +69,8 @@ def render_valuechain_page(main_col):
         .date-label { color: #666; font-size: 0.75rem; margin-left: 8px; white-space: nowrap; }
         /* Expander 스타일 조정 */
         .streamlit-expanderHeader { font-size: 1rem; font-weight: 600; color: #e0e0e0; background-color: #222; border-radius: 5px; }
-        div[data-testid="stExpander"] { border: none; box-shadow: none; }
-        div[data-testid="stExpanderDetails"] { border-left: 2px solid #444; margin-left: 10px; padding-left: 10px; }
+        div[data-testid="stExpander"] { border: none; box-shadow: none; background-color: transparent; }
+        div[data-testid="stExpanderDetails"] { border-left: 2px solid #444; margin-left: 10px; padding-left: 15px; }
         
         div[data-testid="column"] button[kind="secondary"] { justify-content: flex-start !important; text-align: left !important; padding-left: 0px !important; border: none !important; }
         div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
@@ -81,13 +83,14 @@ def render_valuechain_page(main_col):
         # [VIEW 1] LIST MODE
         # ==========================================
         if st.session_state['vc_mode'] == 'list':
+            # 검색창 (Add 버튼 없음)
             st.text_input("🔍 밸류체인 검색", placeholder="Search...", label_visibility="collapsed", key="vc_search_query")
             search_query = st.session_state.get("vc_search_query", "")
             
-            # 리스트
+            # 리스트 영역
             with st.container(height=280):
                 if not st.session_state['vc_list']:
-                    st.caption("등록된 밸류체인이 없습니다.")
+                    st.caption("등록된 밸류체인이 없습니다. 상단 메뉴 Chain > Add를 이용하세요.")
                 else:
                     sorted_list = sorted(st.session_state['vc_list'], key=lambda x: x['created_at'], reverse=True)
                     for vc in sorted_list:
@@ -112,7 +115,7 @@ def render_valuechain_page(main_col):
                                     time.sleep(0.5); st.rerun()
             st.divider()
 
-            # 뷰어 (트리 뷰)
+            # 뷰어 영역 (트리 뷰)
             if st.session_state['selected_vc_id']:
                 target_vc = next((item for item in st.session_state['vc_list'] if item['id'] == st.session_state['selected_vc_id']), None)
                 if target_vc:
@@ -136,34 +139,37 @@ def render_valuechain_page(main_col):
                         # [핵심] JSON 파싱 및 트리 렌더링
                         try:
                             json_data = json.loads(target_vc['json_data'])
-                            # 루트가 'structure' 키를 가지고 있다고 가정 (Gems 프롬프트 기준)
+                            
+                            # 1. 'structure' 키가 있는 경우 (Gems 신규 포맷)
                             if "structure" in json_data:
                                 render_tree_node(json_data["structure"])
-                            # 혹은 예전 방식('groups') 호환
+                                
+                            # 2. 'groups' 키가 있는 경우 (구형 포맷 호환)
                             elif "groups" in json_data:
-                                # 예전 데이터를 새 포맷처럼 변환해서 그리기
+                                # 구형 데이터를 신규 폴더 구조로 변환하여 렌더링
                                 converted_structure = []
                                 for grp in json_data["groups"]:
-                                    folder = { "name": grp["name"], "type": "folder", "children": [] }
+                                    folder = { "name": grp.get("name", "Group"), "type": "folder", "children": [] }
                                     for node in grp.get("nodes", []):
                                         folder["children"].append({
-                                            "name": node.get("label", "Unknown").replace("<br/>", " "),
+                                            "name": node.get("label", "Unknown").replace("<br/>", " ").replace("\n", " "),
                                             "type": "file",
                                             "desc": node.get("desc", ""),
-                                            "code": node.get("id", "").replace("id_", "")
+                                            "code": str(node.get("id", "")).replace("id_", "").replace("S", "")
                                         })
                                     converted_structure.append(folder)
                                 render_tree_node(converted_structure)
                             else:
-                                st.error("지원되지 않는 JSON 형식입니다.")
+                                st.warning("지원되지 않는 데이터 형식입니다.")
                                 st.json(json_data)
                                 
                         except json.JSONDecodeError:
-                            st.error("JSON 데이터 파싱 실패")
+                            st.error("데이터가 올바른 JSON 형식이 아닙니다.")
                         except Exception as e:
                             st.error(f"렌더링 오류: {e}")
 
-                        with st.expander("🔍 원본 JSON 데이터 확인"):
+                        # 원본 데이터 확인용
+                        with st.expander("🔍 원본 데이터 확인", expanded=False):
                             st.json(target_vc['json_data'])
                 else:
                     st.info("선택된 문서가 삭제되었습니다.")
