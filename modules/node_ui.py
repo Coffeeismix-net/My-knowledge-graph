@@ -1,8 +1,15 @@
 import streamlit as st
 import pandas as pd
 import time
+import re # [NEW]
 from streamlit_agraph import agraph, Node, Edge, Config
 from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db, copy_to_clipboard
+
+# [HELPER] 하이라이팅
+def highlight_text(text, query):
+    if not query or not text: return text
+    pattern = re.compile(re.escape(query), re.IGNORECASE)
+    return pattern.sub(lambda m: f"<span style='background-color: #ffd700; color: black; padding: 0 2px; border-radius: 2px;'>{m.group(0)}</span>", str(text))
 
 def act_add_ws(node_id):
     tid = str(node_id)
@@ -56,7 +63,7 @@ def render_sidebar(left_col):
     with left_col:
         all_kws = kw_counts['keyword'].tolist() if not kw_counts.empty else []
         options = [h for h in st.session_state['search_history'] if h in all_kws] + [k for k in all_kws if k not in st.session_state['search_history']]
-        selected = st.multiselect("Search", options=options, default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else [], max_selections=1, placeholder="🔍 Select...", label_visibility="collapsed")
+        selected = st.multiselect("Search (Keywords)", options=options, default=[st.session_state['selected_keyword']] if st.session_state['selected_keyword'] in options else [], max_selections=1, placeholder="🔍 Select Keyword...", label_visibility="collapsed")
         
         if selected:
             if selected[0] != st.session_state['selected_keyword']:
@@ -97,6 +104,7 @@ def render_node_page(main_col):
     current_mode = st.session_state['menu_mode']
     
     with main_col:
+        # [VIEW 1] GRAPH
         if current_mode == "Knowledge Graph":
             c_g1, c_g2 = st.columns([8, 2])
             with c_g2:
@@ -156,7 +164,6 @@ def render_node_page(main_col):
                             ns = st.text_area("Summary", value=n['summary'], height=100, key=f"s_{n['id']}")
                             
                             if b1.button("💾", key=f"up_{n['id']}", use_container_width=True): act_update(n['id'], nl, ns, nk)
-                            # [복사 버튼 수정]
                             with b2:
                                 if st.button("📋", key=f"cp_g_{n['id']}", help="복사"):
                                     copy_to_clipboard(f"Title: {n['label']}\n{n['summary']}")
@@ -164,7 +171,13 @@ def render_node_page(main_col):
                             if b3.button("🗑️", key=f"del_{n['id']}", use_container_width=True): act_trash(n['id'])
                             if b4.button("✕", key=f"cl_{n['id']}", use_container_width=True): act_close_ws(n['id']); st.rerun()
 
+        # [VIEW 2] LIST MODE (Deep Search Applied)
         elif current_mode == "List View":
+            # [NEW] 검색창 추가
+            st.text_input("🔍 노드 검색 (제목/내용)", placeholder="Search...", label_visibility="collapsed", key="node_search_query")
+            search_query = st.session_state.get("node_search_query", "")
+
+            # Active Stack
             if st.session_state['card_stack']:
                 st.markdown("### 🗂️ Active Stack")
                 stack_cols = st.columns(3)
@@ -174,7 +187,6 @@ def render_node_page(main_col):
                             st_c1, st_c2, st_c3, st_c4, st_c5 = st.columns([6, 0.8, 0.8, 0.8, 0.8])
                             st_c1.markdown(f"#### {node_data['label']}")
                             
-                            # [복사 버튼 수정]
                             with st_c2:
                                 if st.button("📋", key=f"cp_l_{node_data['id']}", help="복사"):
                                     copy_to_clipboard(f"Title: {node_data['label']}\n{node_data['summary']}")
@@ -190,11 +202,19 @@ def render_node_page(main_col):
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
 
+            # Filtered List
             filtered_df = df
+            # 1. 사이드바 키워드 필터
             if st.session_state['selected_keyword']:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
+                # 2. [Deep Search] 텍스트 검색 필터
+                if search_query:
+                    # 제목, 요약, 키워드 중 하나라도 포함되면 표시
+                    mask = filtered_df.apply(lambda row: search_query.lower() in (row['label'] + row['summary'] + str(row['keywords'])).lower(), axis=1)
+                    filtered_df = filtered_df[mask]
+
                 try:
                     filtered_df['sort_dt'] = pd.to_datetime(filtered_df['timestamp'], format="%y-%m-%d %H:%M", errors='coerce')
                     filtered_df['sort_dt'] = filtered_df['sort_dt'].fillna(pd.Timestamp.now())
@@ -205,10 +225,17 @@ def render_node_page(main_col):
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
+                        # [Highlighting]
+                        h_label = highlight_text(row['label'], search_query)
+                        h_summary = highlight_text(row['summary'], search_query)
+                        
                         date_str = str(row['timestamp']).split()[0]
-                        final_label = f"**{row['label']}** :gray[| {', '.join(row['keywords'])}] :gray[({date_str})]"
-                        with st.expander(final_label, expanded=False):
-                            st.write(row['summary'])
+                        
+                        # Expander 라벨에는 HTML 적용 제한 -> 일단 제목은 일반 텍스트로 두고 내용에서 강조
+                        # (Expander 제목에 HTML 쓰면 깨질 수 있음)
+                        with st.expander(f"{row['label']} | {', '.join(row['keywords'])} ({date_str})", expanded=bool(search_query)):
+                            st.markdown(f"**Title:** {h_label}", unsafe_allow_html=True)
+                            st.markdown(h_summary, unsafe_allow_html=True)
                             st.caption(f"Full Timestamp: {row['timestamp']}")
                     with row_col2:
                         with st.popover("⋮"):
@@ -220,6 +247,7 @@ def render_node_page(main_col):
                             if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
             else: st.info("No data found.")
 
+        # [VIEW 3] ADD DATA
         elif current_mode == "Add Data":
             st.info("AI Auto-Analysis Node Creator")
             if not st.session_state['temp_analysis']:
