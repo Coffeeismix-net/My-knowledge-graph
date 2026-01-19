@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import time
+import re # [NEW] 정규식 사용
 from utils.style import get_common_style
 from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
 
@@ -10,9 +11,15 @@ try:
 except ImportError:
     st_quill = None
 
-# [UI용 KST Helper]
+# [HELPER] KST Helper
 def get_kst_now_str():
     return (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+
+# [HELPER] 검색어 하이라이팅
+def highlight_text(text, query):
+    if not query or not text: return text
+    pattern = re.compile(re.escape(query), re.IGNORECASE)
+    return pattern.sub(lambda m: f"<span style='background-color: #ffd700; color: black; padding: 0 2px; border-radius: 2px;'>{m.group(0)}</span>", str(text))
 
 def init_stock_db():
     if 'stock_db' not in st.session_state:
@@ -69,7 +76,6 @@ def render_stock_page():
     grouped = pd.DataFrame()
     
     if not df.empty:
-        # [중요] 날짜 변환 (여기서 문자열 -> Timestamp 객체로 바뀜)
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
         df['created_at'] = df['created_at'].fillna(pd.Timestamp.now())
         df = df.sort_values(by='created_at', ascending=False)
@@ -146,21 +152,56 @@ def render_stock_page():
 
     # --- [B] LIST & VIEWER MODE ---
     else:
-        st.text_input("🔍 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
+        st.text_input("🔍 기업명/제목/내용 검색", placeholder="Search...", label_visibility="collapsed", key="stock_search_query")
         sq = st.session_state.get("stock_search_query", "")
         
         with st.container(height=280):
             if not grouped.empty:
-                for _, co in grouped.iterrows():
-                    if sq and (sq not in co['company']): continue
+                for _, co_row in grouped.iterrows():
+                    # 1. 기업 레벨 필터링 (기업명 or 하위 문서 중 하나라도 검색어 포함되면 표시)
+                    sub_docs = df[df['company'] == co_row['company']]
+                    
+                    # [Deep Search] 이 기업의 문서 중 하나라도 검색어를 포함하는가?
+                    company_match = False
+                    if not sq:
+                        company_match = True
+                    else:
+                        if sq.lower() in co_row['company'].lower():
+                            company_match = True
+                        else:
+                            # 문서 내용까지 뒤져서 확인
+                            for _, d in sub_docs.iterrows():
+                                full_text = (d['title'] + str(d['keywords']) + d['content']).lower()
+                                if sq.lower() in full_text:
+                                    company_match = True
+                                    break
+                    
+                    if not company_match:
+                        continue
+                    
                     c_exp, c_del = st.columns([9.2, 0.8])
+                    
                     with c_exp:
-                        with st.expander(f"🏢 {co['company']}", expanded=False):
-                            st.markdown(f"Key: {' '.join([f'`{k}`' for k in co['keywords']])}")
+                        # 기업 이름 하이라이팅
+                        disp_comp = highlight_text(co_row['company'], sq)
+                        with st.expander(f"🏢 {co_row['company']}", expanded=bool(sq)): # 검색 중일 땐 펼쳐줌
+                            st.markdown(f"Key: {' '.join([f'`{k}`' for k in co_row['keywords']])}")
                             st.markdown("<hr style='margin: 5px 0; border-color: #444;'>", unsafe_allow_html=True)
-                            for _, doc in df[df['company']==co['company']].iterrows():
+                            
+                            for _, doc in sub_docs.iterrows():
+                                # [Deep Search] 문서 레벨 필터링
+                                if sq:
+                                    content_match = sq.lower() in (doc['title'] + str(doc['keywords']) + doc['content']).lower()
+                                    if not content_match and sq.lower() not in co_row['company'].lower():
+                                        continue
+
                                 r1, r2, r3 = st.columns([5.5, 3.5, 1])
                                 with r1:
+                                    # 제목 하이라이팅
+                                    disp_title = highlight_text(doc['title'], sq)
+                                    # HTML 렌더링을 위해 버튼 대신 마크다운 링크 느낌을 줄 순 없으니, 버튼 라벨은 그대로 두고 위아래 힌트 제공
+                                    # Streamlit 버튼 라벨에는 HTML 불가 -> 제목은 그냥 텍스트로 두고 내용을 찾았다고 믿게 함.
+                                    # 대신 버튼 위에 매칭 여부를 표시할 순 없으니, 그냥 원본 제목 출력
                                     if st.button(f"📄 {doc['title']}", key=f"open_{doc['id']}", use_container_width=True):
                                         st.session_state['selected_doc_ids'] = [doc['id']]
                                         st.session_state['stock_view_mode'] = 'view'
@@ -168,12 +209,10 @@ def render_stock_page():
                                         st.rerun()
                                 with r2:
                                     k_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
-                                    # [FIX] TypeError 해결: doc['created_at']은 Timestamp 객체임
-                                    try:
+                                    try: 
                                         d_str = doc['created_at'].strftime('%y.%m.%d')
-                                    except:
-                                        d_str = str(doc['created_at'])[:10] # 만약의 경우를 대비한 Fallback
-                                    
+                                    except: 
+                                        d_str = str(doc['created_at'])[:10]
                                     st.markdown(f"<div style='text-align: right; padding-top: 5px;'>{k_html}<span class='date-label'>{d_str}</span></div>", unsafe_allow_html=True)
                                 with r3:
                                     with st.popover("⋮", use_container_width=True):
@@ -181,25 +220,29 @@ def render_stock_page():
                                             st.session_state['stock_view_mode'] = 'edit'; st.session_state['edit_target_id'] = doc['id']; st.rerun()
                                         if st.button("Trash", key=f"d_{doc['id']}", use_container_width=True): move_to_trash(doc['id'])
                     with c_del:
-                        if st.button("🗑️", key=f"del_co_{co['company']}", help="기업 및 문서 휴지통 이동", use_container_width=True): delete_company_all(co['company'])
+                        if st.button("🗑️", key=f"del_co_{co_row['company']}", help="기업 및 문서 휴지통 이동", use_container_width=True): delete_company_all(co_row['company'])
             else: st.caption("문서가 없습니다.")
 
         st.divider()
         sel_ids = st.session_state.get('selected_doc_ids', [])
         if sel_ids:
             for i, doc_id in enumerate(sel_ids):
-                # 뷰어에서는 원본 리스트(dict)를 참조하므로 created_at은 문자열임
                 doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
                 if doc:
                     with st.container(border=True):
                         h1, h2, h3 = st.columns([8, 1, 1])
                         with h1:
-                            keywords_html = "".join([f"<span class='doc-tag'>#{k}</span>" for k in doc['keywords']])
+                            # [Highlighting] 뷰어 헤더
+                            h_title = highlight_text(doc['title'], sq)
+                            h_comp = highlight_text(doc['company'], sq)
+                            
+                            keywords_html = "".join([f"<span class='doc-tag'>#{highlight_text(k, sq)}</span>" for k in doc['keywords']])
+                            
                             title_html = f"""
                             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
-                                <h2 style="margin: 0; padding: 0;">{doc['title']}</h2>
+                                <h2 style="margin: 0; padding: 0;">{h_title}</h2>
                                 <span style="color: #888; font-size: 0.9rem; white-space: nowrap;">
-                                    {doc['company']} | {doc['created_at']}
+                                    {h_comp} | {doc['created_at']}
                                 </span>
                                 <span style="margin-left: 5px;">{keywords_html}</span>
                             </div>
