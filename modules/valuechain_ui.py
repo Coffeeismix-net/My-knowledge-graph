@@ -5,16 +5,30 @@ import time
 import streamlit.components.v1 as components
 from utils.db_api import load_valuechains, add_valuechain, delete_valuechain, get_kst_now_str, copy_to_clipboard
 
-# [HELPER] JSON -> Mermaid 변환기
+# [HELPER] JSON -> Mermaid 변환기 (Auto-Fix 기능 추가)
 def json_to_mermaid(data):
     try:
         if isinstance(data, str): data = json.loads(data)
         
         mermaid_code = "graph TD\n"
         
+        # 스타일 정의
         mermaid_code += "    classDef groupNode fill:#f9f9f9,stroke:#333,stroke-width:2px;\n"
         mermaid_code += "    classDef itemNode fill:#fff,stroke:#333,stroke-width:1px;\n\n"
         
+        # [AUTO-FIX Helper] ID가 숫자로 시작하면 앞에 'id_'를 붙여줌
+        def safe_id(raw_id):
+            s_id = str(raw_id).strip()
+            # 숫자로 시작하면 강제로 접두어 추가
+            if s_id and s_id[0].isdigit():
+                return f"id_{s_id}"
+            return s_id.replace(" ", "_") # 공백도 언더바로 치환
+
+        # [AUTO-FIX Helper] 줄바꿈 문자 처리 (\n -> <br/>)
+        def safe_label(raw_label):
+            return str(raw_label).replace("\n", "<br/>").replace("\"", "'")
+
+        # 그룹(서브그래프) 그리기
         for grp in data.get('groups', []):
             clean_name = grp['name'].replace(" ", "_")
             color = grp.get('color', '#eee')
@@ -23,17 +37,20 @@ def json_to_mermaid(data):
             mermaid_code += f"        style {clean_name} fill:{color},stroke:#333,stroke-width:2px\n"
             
             for node in grp.get('nodes', []):
-                nid = node['id']
-                label = node['label']
+                nid = safe_id(node['id']) # ID 안전 변환
+                label = safe_label(node['label']) # 라벨 안전 변환
                 desc = node.get('desc', '')
-                display = f"{label}<br/>running: {desc}" if desc else label
-                mermaid_code += f"        {nid}({display})\n"
+                
+                display = f"{label}<br/>{desc}" if desc else label
+                # Mermaid Node 문법: id("내용")
+                mermaid_code += f"        {nid}(\"{display}\")\n"
                 mermaid_code += f"        class {nid} itemNode\n"
             mermaid_code += "    end\n\n"
             
+        # 화살표(Flow) 그리기
         for flow in data.get('flows', []):
-            src = flow['from']
-            dst = flow['to']
+            src = safe_id(flow['from']) # 여기서도 동일하게 변환해야 연결됨
+            dst = safe_id(flow['to'])
             lbl = flow.get('label', '')
             if lbl:
                 mermaid_code += f"    {src} -- {lbl} --> {dst}\n"
@@ -46,12 +63,13 @@ def json_to_mermaid(data):
 
 # [HELPER] Mermaid 렌더링
 def render_mermaid(code, height=600):
+    # Mermaid.js 최신 버전을 CDN으로 불러옴
     html_code = f"""
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
+        mermaid.initialize({{ startOnLoad: true, theme: 'dark', securityLevel: 'loose' }});
     </script>
-    <div class="mermaid">
+    <div class="mermaid" style="overflow: auto; height: {height}px;">
         {code}
     </div>
     """
@@ -81,7 +99,6 @@ def render_valuechain_page(main_col):
         # [VIEW 1] LIST MODE
         # ==========================================
         if st.session_state['vc_mode'] == 'list':
-            # [수정] 상단 Add 버튼 제거, 검색창만 남김
             st.text_input("🔍 밸류체인 검색", placeholder="Search...", label_visibility="collapsed", key="vc_search_query")
             search_query = st.session_state.get("vc_search_query", "")
             
@@ -133,6 +150,8 @@ def render_valuechain_page(main_col):
                                 st.rerun()
                         
                         st.divider()
+                        
+                        # [핵심] JSON -> Mermaid 변환 (자동 수정 로직 포함)
                         mm_code = json_to_mermaid(target_vc['json_data'])
                         render_mermaid(mm_code, height=600)
                         
@@ -164,7 +183,6 @@ def render_valuechain_page(main_col):
             
             b1, b2 = st.columns([1, 1])
             with b1:
-                # 취소 버튼만 남기고 뒤로가기 버튼은 상단 메뉴 사용
                 if st.button("취소 (목록으로)", use_container_width=True):
                     st.session_state['vc_mode'] = 'list'
                     st.rerun()
@@ -174,7 +192,10 @@ def render_valuechain_page(main_col):
                         st.warning("제목을 입력해주세요.")
                     else:
                         try:
-                            json.loads(vc_json)
+                            # 유효성 검사 및 자동 수정 테스트
+                            json_data = json.loads(vc_json)
+                            
+                            # 저장
                             add_valuechain(vc_title, vc_json)
                             st.success("저장되었습니다!")
                             st.session_state['vc_list'] = load_valuechains()
@@ -183,3 +204,5 @@ def render_valuechain_page(main_col):
                             st.rerun()
                         except json.JSONDecodeError:
                             st.error("JSON 형식이 올바르지 않습니다.")
+                        except Exception as e:
+                            st.error(f"오류 발생: {e}")
