@@ -43,17 +43,14 @@ def compress_image(image_file):
     """이미지를 리사이징하고 압축하여 용량을 줄임"""
     try:
         img = Image.open(image_file)
-        # RGB로 변환 (PNG 투명도 이슈 방지)
         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
         
-        # 최대 긴 변을 1024px로 리사이징 (가독성 유지하며 용량 축소)
         max_size = 1024
         if max(img.size) > max_size:
             ratio = max_size / max(img.size)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.LANCZOS)
             
-        # JPEG로 압축 (퀄리티 70)
         buffer = BytesIO()
         img.save(buffer, format="JPEG", quality=70)
         return buffer.getvalue()
@@ -112,10 +109,8 @@ def analyze_valuechain_image(image_bytes):
     genai.configure(api_key=st.secrets["gemini"]["api_key"])
     
     try:
-        # 이미지 객체 생성
         image_part = {"mime_type": "image/jpeg", "data": image_bytes}
         
-        # [파트너님의 요청사항을 반영한 프롬프트]
         prompt = """
         당신은 산업 분석 전문가입니다. 제공된 밸류체인 이미지를 분석하여 '폴더형 계층 구조 JSON'으로 변환해주세요.
         
@@ -148,34 +143,30 @@ def analyze_valuechain_image(image_bytes):
         오직 JSON 코드만 출력하세요. Markdown 표시는 하지 마세요.
         """
         
-        model = genai.GenerativeModel('gemini-flash-latest') # Vision 모델 사용
+        model = genai.GenerativeModel('gemini-flash-latest') 
         response = model.generate_content([prompt, image_part])
         
-        # 결과 파싱 (Markdown 제거)
         text = response.text.replace('```json','').replace('```','').strip()
         return {"success": True, "json": text}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 # ==========================================
-# VALUE CHAIN CRUD (Image Support)
+# VALUE CHAIN CRUD
 # ==========================================
 def load_valuechains():
     wb = get_workbook()
     if not wb: return []
     try:
-        # 메타데이터
         ws_meta = get_or_create_sheet(wb, "valuechains", ["id", "title", "created_at"])
         meta_data = ws_meta.get_all_records()
         
-        # JSON 청크 & 이미지 청크
         ws_json_chunks = get_or_create_sheet(wb, "valuechain_chunks", ["id", "index", "content"])
         ws_img_chunks = get_or_create_sheet(wb, "valuechain_images", ["id", "index", "content"])
         
         json_data_list = ws_json_chunks.get_all_records()
         img_data_list = ws_img_chunks.get_all_records()
         
-        # 조립
         json_map = {}
         for row in json_data_list:
             did = str(row['id'])
@@ -191,12 +182,8 @@ def load_valuechains():
         result = []
         for row in meta_data:
             doc_id = str(row['id'])
-            
-            # JSON 합치기
             sorted_json = sorted(json_map.get(doc_id, []), key=lambda x: x[0])
             full_json = "".join([x[1] for x in sorted_json])
-            
-            # 이미지 합치기
             sorted_img = sorted(img_map.get(doc_id, []), key=lambda x: x[0])
             full_img = "".join([x[1] for x in sorted_img])
             
@@ -204,7 +191,7 @@ def load_valuechains():
                 "id": doc_id,
                 "title": row['title'],
                 "json_data": full_json,
-                "image_data": full_img, # Base64 string
+                "image_data": full_img,
                 "created_at": str(row['created_at'])
             })
         return result
@@ -217,16 +204,13 @@ def add_valuechain(title, json_str, image_base64=""):
         new_id = str(uuid.uuid4())[:8]
         now_str = get_kst_now_str()
         
-        # 1. 메타 저장
         ws_meta = get_or_create_sheet(wb, "valuechains", ["id", "title", "created_at"])
         ws_meta.append_row([new_id, title, now_str])
         
-        # 2. JSON 분할 저장
         ws_json = get_or_create_sheet(wb, "valuechain_chunks", ["id", "index", "content"])
         j_chunks = chunk_text(json_str)
         ws_json.append_rows([[new_id, i, c] for i, c in enumerate(j_chunks)])
         
-        # 3. 이미지 분할 저장 (있을 경우)
         if image_base64:
             ws_img = get_or_create_sheet(wb, "valuechain_images", ["id", "index", "content"])
             i_chunks = chunk_text(image_base64)
@@ -241,12 +225,10 @@ def delete_valuechain(doc_id):
     wb = get_workbook()
     if not wb: return
     try:
-        # 메타 삭제
         ws_meta = wb.worksheet("valuechains")
         cell = ws_meta.find(str(doc_id))
         if cell: ws_meta.delete_rows(cell.row)
         
-        # JSON 청크 삭제
         ws_json = wb.worksheet("valuechain_chunks")
         all_j = ws_json.get_all_values()
         if len(all_j) > 1:
@@ -254,7 +236,6 @@ def delete_valuechain(doc_id):
             ws_json.clear(); ws_json.append_row(all_j[0])
             if kept: ws_json.append_rows(kept)
             
-        # 이미지 청크 삭제
         try:
             ws_img = wb.worksheet("valuechain_images")
             all_i = ws_img.get_all_values()
@@ -262,12 +243,11 @@ def delete_valuechain(doc_id):
                 kept = [r for r in all_i[1:] if str(r[0]) != str(doc_id)]
                 ws_img.clear(); ws_img.append_row(all_i[0])
                 if kept: ws_img.append_rows(kept)
-        except: pass # 이미지 시트가 없을 수도 있음
-            
+        except: pass
     except: pass
 
 # ==========================================
-# STOCK & NODE & ETC (기존 유지)
+# STOCK & NODE & ETC (정상화)
 # ==========================================
 def load_stocks():
     wb = get_workbook()
@@ -400,7 +380,7 @@ def permanent_delete_stock(doc_id):
     except: pass
 
 def save_setting_to_db(key, value):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return
     try:
         try: ws = wb.worksheet("settings")
@@ -414,26 +394,37 @@ def load_nodes():
     wb = get_workbook()
     if not wb: return []
     try:
-        data = wb.sheet1.get_all_records(); nodes = []
-        for row in data: nodes.append({"id": str(row['id']), "label": row['label'], "group": row['group_name'], "summary": row['summary'], "keywords": [k.strip() for k in str(row.get('keywords','')).split(',') if k.strip()], "timestamp": row.get('timestamp') or "25-01-01"})
+        data = wb.sheet1.get_all_records()
+        nodes = []
+        for row in data:
+            nodes.append({"id": str(row['id']), "label": row['label'], "group": row['group_name'], "summary": row['summary'], "keywords": [k.strip() for k in str(row.get('keywords','')).split(',') if k.strip()], "timestamp": row.get('timestamp') or "25-01-01"})
         return nodes
     except: return []
 
 def add_node(label, group, summary, keywords):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return None
-    try: new_id = str(uuid.uuid4())[:8]; now_ts = get_kst_now_str(); wb.sheet1.append_row([new_id, label, group, summary, ",".join(keywords), now_ts]); return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
+    try: 
+        new_id = str(uuid.uuid4())[:8]
+        now_ts = get_kst_now_str()
+        wb.sheet1.append_row([new_id, label, group, summary, ",".join(keywords), now_ts])
+        return {"id": new_id, "label": label, "group": group, "summary": summary, "keywords": keywords, "timestamp": now_ts}
     except: return None
 
 def update_node(node_id, label, summary, keywords):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return
-    try: sheet = wb.sheet1; cell = sheet.find(str(node_id)); 
-    if cell: sheet.update_cell(cell.row, 2, label); sheet.update_cell(cell.row, 4, summary); sheet.update_cell(cell.row, 5, ",".join(keywords))
+    try: 
+        sheet = wb.sheet1
+        cell = sheet.find(str(node_id))
+        if cell: 
+            sheet.update_cell(cell.row, 2, label)
+            sheet.update_cell(cell.row, 4, summary)
+            sheet.update_cell(cell.row, 5, ",".join(keywords))
     except: pass
 
 def move_to_trash(node_id, node_data):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return
     try:
         try: trash_sheet = wb.worksheet("trash")
@@ -443,19 +434,21 @@ def move_to_trash(node_id, node_data):
     except: pass
 
 def load_trash():
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return []
     try: return wb.worksheet("trash").get_all_records()
     except: return []
 
 def restore_node(node_row):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return
-    try: wb.sheet1.append_row([node_row['id'], node_row['label'], node_row['group'], node_row['summary'], node_row['keywords'], node_row['created_at']]); permanent_delete(node_row['id'])
+    try: 
+        wb.sheet1.append_row([node_row['id'], node_row['label'], node_row['group'], node_row['summary'], node_row['keywords'], node_row['created_at']])
+        permanent_delete(node_row['id'])
     except: pass
 
 def permanent_delete(node_id):
-    wb = get_workbook(); 
+    wb = get_workbook()
     if not wb: return
     try: wb.worksheet("trash").delete_rows(wb.worksheet("trash").find(str(node_id)).row)
     except: pass
