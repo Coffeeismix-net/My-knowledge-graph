@@ -3,7 +3,12 @@ import pandas as pd
 import time
 import re
 from streamlit_agraph import agraph, Node, Edge, Config
-from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db, copy_to_clipboard
+from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db, copy_to_clipboard, strip_html
+
+try:
+    from streamlit_quill import st_quill
+except ImportError:
+    st_quill = None
 
 # [HELPER] 하이라이팅
 def highlight_text(text, query):
@@ -176,7 +181,6 @@ def render_node_page(main_col):
             st.text_input("🔍 노드 검색 (제목/내용)", placeholder="Search...", label_visibility="collapsed", key="node_search_query")
             search_query = st.session_state.get("node_search_query", "")
 
-            # Active Stack
             if st.session_state['card_stack']:
                 st.markdown("### 🗂️ Active Stack")
                 stack_cols = st.columns(3)
@@ -190,7 +194,6 @@ def render_node_page(main_col):
                                 if st.button("📋", key=f"cp_l_{node_data['id']}", help="복사"):
                                     copy_to_clipboard(f"Title: {node_data['label']}\n{node_data['summary']}")
                                     st.toast("Copied!")
-                            
                             if st_c3.button("✏️", key=f"se_{node_data['id']}_{i}", use_container_width=True):
                                 st.session_state['menu_mode'] = "Knowledge Graph"; act_add_ws(node_data['id']); st.rerun()
                             if st_c4.button("🗑️", key=f"sd_{node_data['id']}_{i}", use_container_width=True): act_trash(node_data['id'])
@@ -198,25 +201,28 @@ def render_node_page(main_col):
                                 st.session_state['card_stack'].pop(i); st.rerun()
                                 
                             st.info(node_data['summary'])
+                            # [View Content] Rich Text가 있으면 보여주기
+                            if node_data.get('content'):
+                                with st.expander("📄 View Full Content"):
+                                    st.markdown(node_data['content'], unsafe_allow_html=True)
                             st.caption(f"🕒 {node_data['timestamp']} | 🏷️ {', '.join(node_data['keywords'])}")
                 st.divider()
 
-            # Filtered List
             filtered_df = df
             if st.session_state['selected_keyword']:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                # Deep Search
                 if search_query:
-                    mask = filtered_df.apply(lambda row: search_query.lower() in (row['label'] + row['summary'] + str(row['keywords'])).lower(), axis=1)
+                    # [Deep Search] Content까지 검색
+                    mask = filtered_df.apply(lambda row: search_query.lower() in (row['label'] + row['summary'] + str(row['keywords']) + str(row.get('content',''))).lower(), axis=1)
                     filtered_df = filtered_df[mask]
 
                 try:
                     filtered_df['sort_dt'] = pd.to_datetime(filtered_df['timestamp'], format="%y-%m-%d %H:%M", errors='coerce')
                     filtered_df['sort_dt'] = filtered_df['sort_dt'].fillna(pd.Timestamp.now())
                     filtered_df = filtered_df.sort_values(by='sort_dt', ascending=False)
-                except Exception: pass
+                except: pass
 
                 st.caption(f"Total: {len(filtered_df)} Nodes")
                 for _, row in filtered_df.iterrows():
@@ -229,7 +235,10 @@ def render_node_page(main_col):
                         with st.expander(f"{row['label']} | {', '.join(row['keywords'])} ({date_str})", expanded=bool(search_query)):
                             st.markdown(f"**Title:** {h_label}", unsafe_allow_html=True)
                             st.markdown(h_summary, unsafe_allow_html=True)
-                            st.caption(f"Full Timestamp: {row['timestamp']}")
+                            # [View Content] 리스트에서도 본문 보기 가능
+                            if row.get('content'):
+                                st.markdown("---")
+                                st.markdown(row['content'], unsafe_allow_html=True)
                     with row_col2:
                         with st.popover("⋮"):
                             if st.button("View", key=f"lv_v_{row['id']}", use_container_width=True):
@@ -241,28 +250,38 @@ def render_node_page(main_col):
             else: st.info("No data found.")
 
         # ==========================================
-        # [VIEW 3] ADD DATA (RE-DESIGNED)
+        # [VIEW 3] ADD DATA (Enhanced Editor)
         # ==========================================
         elif current_mode == "Add Data":
             st.subheader("📝 Add New Knowledge Node")
             
-            # 입력 상태 유지
+            # 입력값 상태 관리
             if "n_title_in" not in st.session_state: st.session_state["n_title_in"] = ""
-            if "n_content_in" not in st.session_state: st.session_state["n_content_in"] = ""
             if "n_summary_in" not in st.session_state: st.session_state["n_summary_in"] = ""
             if "n_kw_in" not in st.session_state: st.session_state["n_kw_in"] = ""
-
-            # 1. 제목 & 내용
-            st.text_input("Title", key="n_title_in", placeholder="노드 제목을 입력하세요...")
-            st.text_area("Content", key="n_content_in", height=300, placeholder="내용을 입력하거나 붙여넣으세요...")
             
-            # 2. AI 요약 버튼 (중간 배치, 선택 사항)
+            # 1. Title
+            st.text_input("Title", key="n_title_in", placeholder="노드 제목을 입력하세요...")
+            
+            # 2. Content (Quill Editor)
+            st.markdown("###### Content (Rich Text & Image)")
+            toolbar = [['bold', 'italic', 'underline', 'strike'], ['blockquote', 'code-block'], [{'header': 1}, {'header': 2}], [{'list': 'ordered'}, {'list': 'bullet'}], [{'indent': '-1'}, {'indent': '+1'}], ['link', 'image'], ['clean']]
+            
+            # Quill 키는 고정하지 않으면 리렌더링 시 내용이 날아갈 수 있으므로 주의
+            if st_quill:
+                content_input = st_quill(placeholder="내용을 입력하거나 이미지를 붙여넣으세요...", html=True, toolbar=toolbar, key="quill_node_input")
+            else:
+                content_input = st.text_area("Content", height=300, key="text_node_input")
+
+            # 3. AI Summary Button
             c_ai, _ = st.columns([2, 8])
             with c_ai:
-                if st.button("✨ AI 요약 실행 (선택)", use_container_width=True, help="내용을 바탕으로 요약과 키워드를 자동 생성합니다."):
-                    if st.session_state["n_content_in"]:
+                if st.button("✨ AI 요약 실행 (선택)", use_container_width=True):
+                    if content_input:
                         with st.spinner("AI가 분석 중입니다..."):
-                            res = ai_process(st.session_state["n_content_in"])
+                            # HTML 태그 제거 후 텍스트만 AI에게 전달
+                            clean_text = strip_html(content_input)
+                            res = ai_process(clean_text)
                             if res['success']:
                                 st.session_state["n_summary_in"] = res.get('summary', '')
                                 st.session_state["n_kw_in"] = res.get('keywords', '')
@@ -273,39 +292,40 @@ def render_node_page(main_col):
                     else:
                         st.warning("내용(Content)을 먼저 입력해주세요.")
 
-            # 3. 요약 & 키워드 (수동 입력 가능)
+            # 4. Summary & Keywords
             c1, c2 = st.columns(2)
             with c1:
-                st.text_area("Summary", key="n_summary_in", height=100, placeholder="요약 내용...")
+                st.text_area("Summary", key="n_summary_in", height=100, placeholder="요약 내용 (그래프 툴팁에 표시됩니다)")
             with c2:
                 st.text_input("Keywords (쉼표로 구분)", key="n_kw_in", placeholder="tag1, tag2, tag3...")
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # 4. 저장 버튼
+            # 5. Save Button
             if st.button("💾 저장하기", type="primary", use_container_width=True):
                 title = st.session_state["n_title_in"]
                 summary = st.session_state["n_summary_in"]
-                content = st.session_state["n_content_in"]
                 kw_str = st.session_state["n_kw_in"]
-
+                
                 if not title:
                     st.warning("제목(Title)은 필수입니다.")
                 else:
-                    # 요약이 없으면 내용의 앞부분을 사용
-                    final_summary = summary if summary else (content[:100] + "..." if content else "No Summary")
+                    # 요약이 없으면 내용 일부 사용
+                    clean_content = strip_html(content_input)
+                    final_summary = summary if summary else (clean_content[:100] + "..." if clean_content else "No Summary")
                     final_keywords = [k.strip() for k in kw_str.split(',') if k.strip()]
                     group_name = final_keywords[0] if final_keywords else "General"
                     
-                    new_node_data = add_node(title, group_name, final_summary, final_keywords)
+                    # DB 저장 (HTML Content 포함)
+                    new_node_data = add_node(title, group_name, final_summary, final_keywords, content_input)
                     
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
                         # 입력 필드 초기화
                         st.session_state["n_title_in"] = ""
-                        st.session_state["n_content_in"] = ""
                         st.session_state["n_summary_in"] = ""
                         st.session_state["n_kw_in"] = ""
+                        # Quill은 session_state로 초기화가 까다로우므로 키를 바꾸거나 리런
                         
                         st.success("노드가 저장되었습니다!")
                         time.sleep(1)
