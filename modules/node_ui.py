@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-import re # [NEW]
+import re
 from streamlit_agraph import agraph, Node, Edge, Config
 from utils.db_api import update_node, move_to_trash, add_node, ai_process, get_group_color, get_workbook, save_setting_to_db, copy_to_clipboard
 
@@ -171,9 +171,8 @@ def render_node_page(main_col):
                             if b3.button("🗑️", key=f"del_{n['id']}", use_container_width=True): act_trash(n['id'])
                             if b4.button("✕", key=f"cl_{n['id']}", use_container_width=True): act_close_ws(n['id']); st.rerun()
 
-        # [VIEW 2] LIST MODE (Deep Search Applied)
+        # [VIEW 2] LIST MODE
         elif current_mode == "List View":
-            # [NEW] 검색창 추가
             st.text_input("🔍 노드 검색 (제목/내용)", placeholder="Search...", label_visibility="collapsed", key="node_search_query")
             search_query = st.session_state.get("node_search_query", "")
 
@@ -204,14 +203,12 @@ def render_node_page(main_col):
 
             # Filtered List
             filtered_df = df
-            # 1. 사이드바 키워드 필터
             if st.session_state['selected_keyword']:
                 filtered_df = df[df['keywords'].apply(lambda x: st.session_state['selected_keyword'] in x)]
             
             if not filtered_df.empty:
-                # 2. [Deep Search] 텍스트 검색 필터
+                # Deep Search
                 if search_query:
-                    # 제목, 요약, 키워드 중 하나라도 포함되면 표시
                     mask = filtered_df.apply(lambda row: search_query.lower() in (row['label'] + row['summary'] + str(row['keywords'])).lower(), axis=1)
                     filtered_df = filtered_df[mask]
 
@@ -225,14 +222,10 @@ def render_node_page(main_col):
                 for _, row in filtered_df.iterrows():
                     row_col1, row_col2 = st.columns([0.95, 0.05])
                     with row_col1:
-                        # [Highlighting]
                         h_label = highlight_text(row['label'], search_query)
                         h_summary = highlight_text(row['summary'], search_query)
-                        
                         date_str = str(row['timestamp']).split()[0]
                         
-                        # Expander 라벨에는 HTML 적용 제한 -> 일단 제목은 일반 텍스트로 두고 내용에서 강조
-                        # (Expander 제목에 HTML 쓰면 깨질 수 있음)
                         with st.expander(f"{row['label']} | {', '.join(row['keywords'])} ({date_str})", expanded=bool(search_query)):
                             st.markdown(f"**Title:** {h_label}", unsafe_allow_html=True)
                             st.markdown(h_summary, unsafe_allow_html=True)
@@ -247,34 +240,76 @@ def render_node_page(main_col):
                             if st.button("Trash", key=f"lv_d_{row['id']}", use_container_width=True): act_trash(row['id'])
             else: st.info("No data found.")
 
-        # [VIEW 3] ADD DATA
+        # ==========================================
+        # [VIEW 3] ADD DATA (RE-DESIGNED)
+        # ==========================================
         elif current_mode == "Add Data":
-            st.info("AI Auto-Analysis Node Creator")
-            if not st.session_state['temp_analysis']:
-                ti = st.text_input("Title")
-                co = st.text_area("Content", height=200)
-                if st.button("🔍 AI Analyze", type="primary"):
-                    if ti and co:
-                        with st.spinner("Thinking..."):
-                            res = ai_process(co)
-                            st.session_state['temp_analysis'] = { "title": ti, "content": co, "summary": res.get('summary',''), "keywords": res.get('keywords',''), "success": res['success'], "error": res.get('error','') }
-                            st.rerun()
-            else:
-                tmp = st.session_state['temp_analysis']
-                if not tmp['success']: st.error(f"{tmp['error']}") 
-                else: st.success("Analysis Complete!")
-                n_title = st.text_input("Title", value=tmp['title'])
-                st.caption("Original Content")
-                st.text_area("Original Content", value=tmp['content'], height=150, disabled=True, label_visibility="collapsed")
-                n_sum = st.text_area("AI Summary", value=tmp['summary'], height=100)
-                n_kw = st.text_input("Keywords", value=tmp['keywords'])
-                if st.button("💾 Save", type="primary", use_container_width=True):
-                    final_keywords = [k.strip() for k in n_kw.split(',')]
+            st.subheader("📝 Add New Knowledge Node")
+            
+            # 입력 상태 유지
+            if "n_title_in" not in st.session_state: st.session_state["n_title_in"] = ""
+            if "n_content_in" not in st.session_state: st.session_state["n_content_in"] = ""
+            if "n_summary_in" not in st.session_state: st.session_state["n_summary_in"] = ""
+            if "n_kw_in" not in st.session_state: st.session_state["n_kw_in"] = ""
+
+            # 1. 제목 & 내용
+            st.text_input("Title", key="n_title_in", placeholder="노드 제목을 입력하세요...")
+            st.text_area("Content", key="n_content_in", height=300, placeholder="내용을 입력하거나 붙여넣으세요...")
+            
+            # 2. AI 요약 버튼 (중간 배치, 선택 사항)
+            c_ai, _ = st.columns([2, 8])
+            with c_ai:
+                if st.button("✨ AI 요약 실행 (선택)", use_container_width=True, help="내용을 바탕으로 요약과 키워드를 자동 생성합니다."):
+                    if st.session_state["n_content_in"]:
+                        with st.spinner("AI가 분석 중입니다..."):
+                            res = ai_process(st.session_state["n_content_in"])
+                            if res['success']:
+                                st.session_state["n_summary_in"] = res.get('summary', '')
+                                st.session_state["n_kw_in"] = res.get('keywords', '')
+                                st.toast("AI 분석 완료!")
+                                st.rerun()
+                            else:
+                                st.error(f"AI 분석 실패: {res['error']}")
+                    else:
+                        st.warning("내용(Content)을 먼저 입력해주세요.")
+
+            # 3. 요약 & 키워드 (수동 입력 가능)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.text_area("Summary", key="n_summary_in", height=100, placeholder="요약 내용...")
+            with c2:
+                st.text_input("Keywords (쉼표로 구분)", key="n_kw_in", placeholder="tag1, tag2, tag3...")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # 4. 저장 버튼
+            if st.button("💾 저장하기", type="primary", use_container_width=True):
+                title = st.session_state["n_title_in"]
+                summary = st.session_state["n_summary_in"]
+                content = st.session_state["n_content_in"]
+                kw_str = st.session_state["n_kw_in"]
+
+                if not title:
+                    st.warning("제목(Title)은 필수입니다.")
+                else:
+                    # 요약이 없으면 내용의 앞부분을 사용
+                    final_summary = summary if summary else (content[:100] + "..." if content else "No Summary")
+                    final_keywords = [k.strip() for k in kw_str.split(',') if k.strip()]
                     group_name = final_keywords[0] if final_keywords else "General"
-                    new_node_data = add_node(n_title, group_name, n_sum, final_keywords)
+                    
+                    new_node_data = add_node(title, group_name, final_summary, final_keywords)
+                    
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
-                        st.session_state['temp_analysis'] = None
-                        st.success("Saved!"); time.sleep(1); st.session_state['menu_mode'] = "Knowledge Graph"; st.rerun()
-                    else: st.error("Save Error")
-                if st.button("Cancel", use_container_width=True): st.session_state['temp_analysis'] = None; st.rerun()
+                        # 입력 필드 초기화
+                        st.session_state["n_title_in"] = ""
+                        st.session_state["n_content_in"] = ""
+                        st.session_state["n_summary_in"] = ""
+                        st.session_state["n_kw_in"] = ""
+                        
+                        st.success("노드가 저장되었습니다!")
+                        time.sleep(1)
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다.")
