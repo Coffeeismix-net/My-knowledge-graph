@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import time
 import re # [NEW] 정규식 사용
 from utils.style import get_common_style
-from utils.db_api import load_stocks, add_stock, update_stock, move_stock_to_trash, strip_html, copy_to_clipboard
+from utils.db_stock import load_stocks, add_stock, update_stock, move_stock_to_trash
+from utils.db_common import copy_to_clipboard, strip_html, get_kst_now_str
 
 try:
     from streamlit_quill import st_quill
