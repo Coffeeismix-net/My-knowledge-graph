@@ -202,7 +202,6 @@ def render_node_page(main_col):
                                 st.session_state['card_stack'].pop(i); st.rerun()
                                 
                             st.info(node_data['summary'])
-                            # [View Content] Rich Text가 있으면 보여주기
                             if node_data.get('content'):
                                 with st.expander("📄 View Full Content"):
                                     st.markdown(node_data['content'], unsafe_allow_html=True)
@@ -215,7 +214,6 @@ def render_node_page(main_col):
             
             if not filtered_df.empty:
                 if search_query:
-                    # [Deep Search] Content까지 검색
                     mask = filtered_df.apply(lambda row: search_query.lower() in (row['label'] + row['summary'] + str(row['keywords']) + str(row.get('content',''))).lower(), axis=1)
                     filtered_df = filtered_df[mask]
 
@@ -236,7 +234,6 @@ def render_node_page(main_col):
                         with st.expander(f"{row['label']} | {', '.join(row['keywords'])} ({date_str})", expanded=bool(search_query)):
                             st.markdown(f"**Title:** {h_label}", unsafe_allow_html=True)
                             st.markdown(h_summary, unsafe_allow_html=True)
-                            # [View Content] 리스트에서도 본문 보기 가능
                             if row.get('content'):
                                 st.markdown("---")
                                 st.markdown(row['content'], unsafe_allow_html=True)
@@ -251,42 +248,48 @@ def render_node_page(main_col):
             else: st.info("No data found.")
 
         # ==========================================
-        # [VIEW 3] ADD DATA (Enhanced Editor)
+        # [VIEW 3] ADD DATA (SAFE FORM)
         # ==========================================
         elif current_mode == "Add Data":
             st.subheader("📝 Add New Knowledge Node")
             
-            # 입력값 상태 관리
-            if "n_title_in" not in st.session_state: st.session_state["n_title_in"] = ""
-            if "n_summary_in" not in st.session_state: st.session_state["n_summary_in"] = ""
-            if "n_kw_in" not in st.session_state: st.session_state["n_kw_in"] = ""
+            # [KEY ROTATION] 폼 초기화를 위한 ID 생성
+            if 'node_form_id' not in st.session_state:
+                st.session_state['node_form_id'] = 0
+            
+            # Form ID를 키에 포함시켜서, ID가 바뀌면 아예 새로운 입력창이 생성되게 함
+            form_id = st.session_state['node_form_id']
             
             # 1. Title
-            st.text_input("Title", key="n_title_in", placeholder="노드 제목을 입력하세요...")
+            title = st.text_input("Title", key=f"n_title_{form_id}", placeholder="노드 제목을 입력하세요...")
             
-            # 2. Content (Quill Editor)
+            # 2. Content (Quill or Text)
             st.markdown("###### Content (Rich Text & Image)")
             toolbar = [['bold', 'italic', 'underline', 'strike'], ['blockquote', 'code-block'], [{'header': 1}, {'header': 2}], [{'list': 'ordered'}, {'list': 'bullet'}], [{'indent': '-1'}, {'indent': '+1'}], ['link', 'image'], ['clean']]
             
-            # Quill 키는 고정하지 않으면 리렌더링 시 내용이 날아갈 수 있으므로 주의
+            content_val = ""
             if st_quill:
-                content_input = st_quill(placeholder="내용을 입력하거나 이미지를 붙여넣으세요...", html=True, toolbar=toolbar, key="quill_node_input")
+                # Quill은 내용을 직접 리턴함
+                content_val = st_quill(placeholder="내용을 입력하거나 이미지를 붙여넣으세요...", html=True, toolbar=toolbar, key=f"n_quill_{form_id}")
             else:
-                content_input = st.text_area("Content", height=300, key="text_node_input")
+                content_val = st.text_area("Content", height=300, key=f"n_content_{form_id}")
 
             # 3. AI Summary Button
+            # (AI 결과는 폼 ID와 무관하게 임시 저장소에 담았다가, 키워드/요약 입력창의 value로 넣어줌)
+            if 'ai_result_summary' not in st.session_state: st.session_state['ai_result_summary'] = ""
+            if 'ai_result_kw' not in st.session_state: st.session_state['ai_result_kw'] = ""
+
             c_ai, _ = st.columns([2, 8])
             with c_ai:
                 if st.button("✨ AI 요약 실행 (선택)", use_container_width=True):
-                    if content_input:
+                    if content_val:
                         with st.spinner("AI가 분석 중입니다..."):
-                            # HTML 태그 제거 후 텍스트만 AI에게 전달
-                            clean_text = strip_html(content_input)
+                            clean_text = strip_html(content_val)
                             res = ai_process(clean_text)
                             if res['success']:
-                                st.session_state["n_summary_in"] = res.get('summary', '')
-                                st.session_state["n_kw_in"] = res.get('keywords', '')
-                                st.toast("AI 분석 완료!")
+                                st.session_state['ai_result_summary'] = res.get('summary', '')
+                                st.session_state['ai_result_kw'] = res.get('keywords', '')
+                                st.toast("AI 분석 완료! 아래 필드가 채워졌습니다.")
                                 st.rerun()
                             else:
                                 st.error(f"AI 분석 실패: {res['error']}")
@@ -296,37 +299,34 @@ def render_node_page(main_col):
             # 4. Summary & Keywords
             c1, c2 = st.columns(2)
             with c1:
-                st.text_area("Summary", key="n_summary_in", height=100, placeholder="요약 내용 (그래프 툴팁에 표시됩니다)")
+                # AI 결과가 있으면 그걸 기본값으로 보여줌
+                summary = st.text_area("Summary", value=st.session_state['ai_result_summary'], key=f"n_sum_{form_id}", height=100, placeholder="요약 내용...")
             with c2:
-                st.text_input("Keywords (쉼표로 구분)", key="n_kw_in", placeholder="tag1, tag2, tag3...")
+                kw_str = st.text_input("Keywords (쉼표로 구분)", value=st.session_state['ai_result_kw'], key=f"n_kw_{form_id}", placeholder="tag1, tag2...")
             
             st.markdown("<br>", unsafe_allow_html=True)
 
             # 5. Save Button
             if st.button("💾 저장하기", type="primary", use_container_width=True):
-                title = st.session_state["n_title_in"]
-                summary = st.session_state["n_summary_in"]
-                kw_str = st.session_state["n_kw_in"]
-                
                 if not title:
                     st.warning("제목(Title)은 필수입니다.")
                 else:
-                    # 요약이 없으면 내용 일부 사용
-                    clean_content = strip_html(content_input)
+                    clean_content = strip_html(content_val)
                     final_summary = summary if summary else (clean_content[:100] + "..." if clean_content else "No Summary")
                     final_keywords = [k.strip() for k in kw_str.split(',') if k.strip()]
                     group_name = final_keywords[0] if final_keywords else "General"
                     
-                    # DB 저장 (HTML Content 포함)
-                    new_node_data = add_node(title, group_name, final_summary, final_keywords, content_input)
+                    new_node_data = add_node(title, group_name, final_summary, final_keywords, content_val)
                     
                     if new_node_data:
                         st.session_state['nodes_db'].append(new_node_data)
-                        # 입력 필드 초기화
-                        st.session_state["n_title_in"] = ""
-                        st.session_state["n_summary_in"] = ""
-                        st.session_state["n_kw_in"] = ""
-                        # Quill은 session_state로 초기화가 까다로우므로 키를 바꾸거나 리런
+                        
+                        # [SUCCESS ACTION]
+                        # 1. AI 임시 저장소 초기화
+                        st.session_state['ai_result_summary'] = ""
+                        st.session_state['ai_result_kw'] = ""
+                        # 2. Form ID 증가 -> 다음 렌더링 때 새로운 빈 위젯들이 생성됨 (자동 초기화 효과)
+                        st.session_state['node_form_id'] += 1
                         
                         st.success("노드가 저장되었습니다!")
                         time.sleep(1)
