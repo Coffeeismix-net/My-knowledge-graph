@@ -52,7 +52,7 @@ _DEFAULTS = {
     'edit_target_id': None,
     # Value Chain
     'vc_mode': 'list',
-    'vc_list': None,  # None = not loaded yet
+    'vc_list': [],  # empty list = not loaded yet, load in valuechain_ui
     'selected_vc_id': None,
     'show_original_img': False,
     'analyzed_json': "",
@@ -69,6 +69,66 @@ load_settings_from_db()
 # 노드 로드 (한 번만)
 if not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
+
+# ==========================================
+# TRASH CAN
+# ==========================================
+def _render_trash_can():
+    st.markdown("### 🗑️ 휴지통")
+
+    # [1] Node 휴지통
+    st.markdown("#### 1. 지식 그래프 (Nodes)")
+    trash_nodes = load_trash()
+    if trash_nodes:
+        for row in trash_nodes:
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([7, 1.5, 1.5])
+                c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
+                c1.caption(f"Deleted: {row['deleted_at']}")
+                if c2.button("♻️ 복구", key=f"res_n_{row['id']}", use_container_width=True):
+                    restore_node(row)
+                    st.session_state['nodes_db'].append({
+                        "id": str(row['id']), "label": row['label'],
+                        "group": row['group'], "summary": row['summary'],
+                        "keywords": str(row['keywords']).split(','),
+                        "timestamp": row['created_at']
+                    })
+                    st.success("복구됨")
+                    time.sleep(0.5)
+                    st.rerun()
+                if c3.button("🔥 삭제", key=f"del_n_{row['id']}", type="primary", use_container_width=True):
+                    permanent_delete(row['id'])
+                    st.warning("영구 삭제됨")
+                    time.sleep(0.5)
+                    st.rerun()
+    else:
+        st.caption("비어있음")
+
+    st.divider()
+
+    # [2] Stock 휴지통
+    st.markdown("#### 2. 기업 분석 (Stocks)")
+    trash_stocks = load_stock_trash()
+    if trash_stocks:
+        for row in trash_stocks:
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([7, 1.5, 1.5])
+                c1.markdown(f"**[{row['company']}] {row['title']}**")
+                c1.caption(f"Deleted: {row['deleted_at']}")
+                if c2.button("♻️ 복구", key=f"res_s_{row['id']}", use_container_width=True):
+                    restore_stock(row)
+                    if 'stock_db' in st.session_state:
+                        st.session_state['stock_db'].append(row)
+                    st.success("복구됨")
+                    time.sleep(0.5)
+                    st.rerun()
+                if c3.button("🔥 삭제", key=f"del_s_{row['id']}", type="primary", use_container_width=True):
+                    permanent_delete_stock(row['id'])
+                    st.warning("영구 삭제됨")
+                    time.sleep(0.5)
+                    st.rerun()
+    else:
+        st.caption("비어있음")
 
 # ==========================================
 # LOGIN
@@ -170,63 +230,3 @@ else:
 
         elif current_mode == "Trash Can":
             _render_trash_can()
-
-# ==========================================
-# TRASH CAN (인라인 정의 — 간단하므로 별도 모듈 불필요)
-# ==========================================
-def _render_trash_can():
-    st.markdown("### 🗑️ 휴지통")
-
-    # [1] Node 휴지통
-    st.markdown("#### 1. 지식 그래프 (Nodes)")
-    trash_nodes = load_trash()
-    if trash_nodes:
-        for row in trash_nodes:
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([7, 1.5, 1.5])
-                c1.markdown(f"**{row['label']}** :gray[| {row['keywords']}]")
-                c1.caption(f"Deleted: {row['deleted_at']}")
-                if c2.button("♻️ 복구", key=f"res_n_{row['id']}", use_container_width=True):
-                    restore_node(row)
-                    st.session_state['nodes_db'].append({
-                        "id": str(row['id']), "label": row['label'],
-                        "group": row['group'], "summary": row['summary'],
-                        "keywords": str(row['keywords']).split(','),
-                        "timestamp": row['created_at']
-                    })
-                    st.success("복구됨")
-                    time.sleep(0.5)
-                    st.rerun()
-                if c3.button("🔥 삭제", key=f"del_n_{row['id']}", type="primary", use_container_width=True):
-                    permanent_delete(row['id'])
-                    st.warning("영구 삭제됨")
-                    time.sleep(0.5)
-                    st.rerun()
-    else:
-        st.caption("비어있음")
-
-    st.divider()
-
-    # [2] Stock 휴지통
-    st.markdown("#### 2. 기업 분석 (Stocks)")
-    trash_stocks = load_stock_trash()
-    if trash_stocks:
-        for row in trash_stocks:
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([7, 1.5, 1.5])
-                c1.markdown(f"**[{row['company']}] {row['title']}**")
-                c1.caption(f"Deleted: {row['deleted_at']}")
-                if c2.button("♻️ 복구", key=f"res_s_{row['id']}", use_container_width=True):
-                    restore_stock(row)
-                    if 'stock_db' in st.session_state:
-                        st.session_state['stock_db'].append(row)
-                    st.success("복구됨")
-                    time.sleep(0.5)
-                    st.rerun()
-                if c3.button("🔥 삭제", key=f"del_s_{row['id']}", type="primary", use_container_width=True):
-                    permanent_delete_stock(row['id'])
-                    st.warning("영구 삭제됨")
-                    time.sleep(0.5)
-                    st.rerun()
-    else:
-        st.caption("비어있음")
