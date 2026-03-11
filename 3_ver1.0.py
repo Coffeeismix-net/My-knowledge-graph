@@ -1,5 +1,5 @@
 """
-app.py — 나만의 지식 센터 (Optimized)
+app.py — 나만의 지식 센터 (Optimized + UX Enhanced)
 메인 엔트리포인트. CSS 주입, 세션 초기화, 라우팅을 담당.
 """
 import streamlit as st
@@ -8,11 +8,13 @@ import time
 # [MODULE IMPORTS]
 from utils.db_node import load_nodes, load_trash, restore_node, permanent_delete
 from utils.db_common import load_settings_from_db
-from utils.db_stock import load_stock_trash, restore_stock, permanent_delete_stock
+from utils.db_stock import load_stocks, load_stock_trash, restore_stock, permanent_delete_stock
 from utils.style import GLOBAL_CSS
 from modules.stock_ui import render_stock_page
 from modules.node_ui import render_node_page, render_sidebar
 from modules.valuechain_ui import render_valuechain_page
+from modules.dashboard_ui import render_dashboard
+from modules.search_ui import render_global_search
 
 # ==========================================
 # CONFIG
@@ -26,8 +28,8 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 _DEFAULTS = {
     # Auth
     'logged_in': False,
-    # Navigation
-    'menu_mode': "Knowledge Graph",
+    # Navigation — 기본값을 Dashboard로 변경
+    'menu_mode': "Dashboard",
     # Node
     'nodes_db': [],
     'workspace_nodes': [],
@@ -57,6 +59,10 @@ _DEFAULTS = {
     'show_original_img': False,
     'analyzed_json': "",
     'analyzed_img_b64': "",
+    # Global Search
+    'global_search_query': "",
+    'global_search_filter': ["Node", "Stock", "Chain"],
+    'global_tag_filter': "",
 }
 
 for key, default in _DEFAULTS.items():
@@ -69,6 +75,10 @@ load_settings_from_db()
 # 노드 로드 (한 번만)
 if not st.session_state['nodes_db']:
     st.session_state['nodes_db'] = load_nodes()
+
+# Stock 로드 (한 번만) — Dashboard에서 필요
+if 'stock_db' not in st.session_state:
+    st.session_state['stock_db'] = load_stocks()
 
 # ==========================================
 # TRASH CAN
@@ -154,15 +164,25 @@ if not st.session_state['logged_in']:
 # MAIN APP
 # ==========================================
 else:
-    left, main = st.columns([0.8, 5.2])
-    render_sidebar(left)
+    current_mode = st.session_state['menu_mode']
 
-    with main:
-        # [MENU BAR]
-        menu_cols = st.columns([5, 1, 1, 1, 1, 1])
+    # Dashboard와 Global Search는 사이드바 없이 전체 폭 사용
+    if current_mode in ("Dashboard", "Global Search"):
+        # [MENU BAR — Full Width]
+        menu_cols = st.columns([5, 1, 1, 1, 1, 1, 1, 1])
+
+        # Home (Dashboard)
+        if menu_cols[1].button("🏠 Home", key="nav_home", use_container_width=True):
+            st.session_state['menu_mode'] = "Dashboard"
+            st.rerun()
+
+        # Search
+        if menu_cols[2].button("🔍 Search", key="nav_search", use_container_width=True):
+            st.session_state['menu_mode'] = "Global Search"
+            st.rerun()
 
         # Node Menu
-        with menu_cols[1]:
+        with menu_cols[3]:
             with st.popover("Node", use_container_width=True):
                 if st.button("Graph", key="nav_n_g", use_container_width=True):
                     st.session_state['menu_mode'] = "Knowledge Graph"
@@ -175,7 +195,7 @@ else:
                     st.rerun()
 
         # Stock Menu
-        with menu_cols[2]:
+        with menu_cols[4]:
             with st.popover("Stock", use_container_width=True):
                 if st.button("List", key="nav_s_l", use_container_width=True):
                     st.session_state['menu_mode'] = "Stock Analysis"
@@ -188,7 +208,7 @@ else:
                     st.rerun()
 
         # Chain Menu
-        with menu_cols[3]:
+        with menu_cols[5]:
             with st.popover("Chain", use_container_width=True):
                 if st.button("List", key="nav_vc_l", use_container_width=True):
                     st.session_state['menu_mode'] = "Value Chain"
@@ -200,33 +220,109 @@ else:
                     st.rerun()
 
         # Trash & Out
-        if menu_cols[4].button("Trash", key="nav_trash", use_container_width=True):
+        if menu_cols[6].button("Trash", key="nav_trash", use_container_width=True):
             st.session_state['menu_mode'] = "Trash Can"
             st.rerun()
-        if menu_cols[5].button("Out", key="nav_out", use_container_width=True):
+        if menu_cols[7].button("Out", key="nav_out", use_container_width=True):
             st.session_state['logged_in'] = False
             st.rerun()
 
         # Page Header
         st.markdown(
-            f"<div class='tight-header' style='text-align: right;'>📂 {st.session_state['menu_mode']}</div>",
+            f"<div class='tight-header' style='text-align: right;'>📂 {current_mode}</div>",
             unsafe_allow_html=True
         )
         st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
 
-        # ==========================================
         # ROUTING
-        # ==========================================
-        current_mode = st.session_state['menu_mode']
+        if current_mode == "Dashboard":
+            render_dashboard()
+        elif current_mode == "Global Search":
+            render_global_search()
 
-        if current_mode in ("Knowledge Graph", "List View", "Add Data"):
-            render_node_page(main)
+    else:
+        # 기존 레이아웃 (사이드바 + 메인)
+        left, main = st.columns([0.8, 5.2])
+        render_sidebar(left)
 
-        elif current_mode == "Stock Analysis":
-            render_stock_page()
+        with main:
+            # [MENU BAR]
+            menu_cols = st.columns([5, 1, 1, 1, 1, 1, 1, 1])
 
-        elif current_mode == "Value Chain":
-            render_valuechain_page(main)
+            # Home (Dashboard)
+            if menu_cols[1].button("🏠 Home", key="nav_home_m", use_container_width=True):
+                st.session_state['menu_mode'] = "Dashboard"
+                st.rerun()
 
-        elif current_mode == "Trash Can":
-            _render_trash_can()
+            # Search
+            if menu_cols[2].button("🔍 Search", key="nav_search_m", use_container_width=True):
+                st.session_state['menu_mode'] = "Global Search"
+                st.rerun()
+
+            # Node Menu
+            with menu_cols[3]:
+                with st.popover("Node", use_container_width=True):
+                    if st.button("Graph", key="nav_n_g_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Knowledge Graph"
+                        st.rerun()
+                    if st.button("List", key="nav_n_l_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "List View"
+                        st.rerun()
+                    if st.button("Add", key="nav_n_a_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Add Data"
+                        st.rerun()
+
+            # Stock Menu
+            with menu_cols[4]:
+                with st.popover("Stock", use_container_width=True):
+                    if st.button("List", key="nav_s_l_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Stock Analysis"
+                        st.session_state['stock_view_mode'] = "list"
+                        st.rerun()
+                    if st.button("Add", key="nav_s_a_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Stock Analysis"
+                        st.session_state['stock_view_mode'] = "add"
+                        st.session_state['edit_target_id'] = None
+                        st.rerun()
+
+            # Chain Menu
+            with menu_cols[5]:
+                with st.popover("Chain", use_container_width=True):
+                    if st.button("List", key="nav_vc_l_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Value Chain"
+                        st.session_state['vc_mode'] = 'list'
+                        st.rerun()
+                    if st.button("Add", key="nav_vc_a_m", use_container_width=True):
+                        st.session_state['menu_mode'] = "Value Chain"
+                        st.session_state['vc_mode'] = 'add'
+                        st.rerun()
+
+            # Trash & Out
+            if menu_cols[6].button("Trash", key="nav_trash_m", use_container_width=True):
+                st.session_state['menu_mode'] = "Trash Can"
+                st.rerun()
+            if menu_cols[7].button("Out", key="nav_out_m", use_container_width=True):
+                st.session_state['logged_in'] = False
+                st.rerun()
+
+            # Page Header
+            st.markdown(
+                f"<div class='tight-header' style='text-align: right;'>📂 {current_mode}</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("<hr class='tight-hr'>", unsafe_allow_html=True)
+
+            # ==========================================
+            # ROUTING
+            # ==========================================
+            if current_mode in ("Knowledge Graph", "List View", "Add Data"):
+                render_node_page(main)
+
+            elif current_mode == "Stock Analysis":
+                render_stock_page()
+
+            elif current_mode == "Value Chain":
+                render_valuechain_page(main)
+
+            elif current_mode == "Trash Can":
+                _render_trash_can()
