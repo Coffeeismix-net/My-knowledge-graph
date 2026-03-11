@@ -76,7 +76,7 @@ def _convert_legacy_groups(json_data):
 # MAIN RENDER
 # ==========================================
 def render_valuechain_page(main_col):
-    if 'vc_list' not in st.session_state:
+    if not st.session_state.get('vc_list'):
         st.session_state['vc_list'] = load_valuechains()
     if 'selected_vc_id' not in st.session_state:
         st.session_state['selected_vc_id'] = None
