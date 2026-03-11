@@ -67,6 +67,75 @@ GLOBAL_CSS = """
     div[data-testid="column"] button[kind="secondary"] p { text-align: left !important; }
     div[data-testid="stPopover"] > button { border: none !important; background: transparent !important; color: #888 !important; }
     div[data-testid="stPopover"] > button:hover { color: white !important; }
+
+    /* ==========================================
+       DASHBOARD CARDS
+       ========================================== */
+    .dash-card {
+        background: linear-gradient(135deg, #111 0%, #1a1a1a 100%);
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 20px 16px;
+        text-align: center;
+        transition: border-color 0.2s ease;
+    }
+    .dash-card:hover {
+        border-color: #00ADB5;
+    }
+    .dash-card-icon {
+        font-size: 2rem;
+        margin-bottom: 8px;
+    }
+    .dash-card-num {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #00ADB5;
+        line-height: 1.2;
+    }
+    .dash-card-label {
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* ==========================================
+       TAG CLOUD
+       ========================================== */
+    .tag-cloud-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 0;
+    }
+    .tag-cloud-item {
+        display: inline-block;
+        padding: 4px 10px;
+        border: 1px solid;
+        border-radius: 16px;
+        background: transparent;
+        cursor: default;
+        transition: background 0.2s ease;
+        white-space: nowrap;
+    }
+    .tag-cloud-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* ==========================================
+       GLOBAL SEARCH
+       ========================================== */
+    .search-domain-badge {
+        display: inline-block;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #000;
+        padding: 2px 8px;
+        border-radius: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
 </style>
 """
 
