@@ -4,7 +4,7 @@ stock_ui.py — Stock Analysis UI (List / Editor / Viewer)
 import streamlit as st
 import pandas as pd
 import time
-from utils.db_stock import load_stocks, add_stock, update_stock, move_stock_to_trash
+from utils.db_stock import load_stocks, add_stock, update_stock, move_stock_to_trash, clear_stocks_cache
 from utils.db_common import (
     copy_to_clipboard, strip_html, get_kst_now_str, highlight_text
 )
@@ -28,6 +28,7 @@ def _move_to_trash(doc_id):
     target_doc = next((d for d in st.session_state['stock_db'] if d['id'] == doc_id), None)
     if target_doc:
         move_stock_to_trash(target_doc)
+        clear_stocks_cache()
         target_doc['deleted_at'] = get_kst_now_str()
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['id'] != doc_id]
         sel_ids = st.session_state.get('selected_doc_ids', [])
@@ -46,6 +47,7 @@ def _delete_company_all(company_name):
             sel_ids = st.session_state.get('selected_doc_ids', [])
             if doc['id'] in sel_ids:
                 sel_ids.remove(doc['id'])
+        clear_stocks_cache()
         st.session_state['stock_db'] = [d for d in st.session_state['stock_db'] if d['company'] != company_name]
         st.toast(f"🗑️ '{company_name}' 전체가 휴지통으로 이동되었습니다.")
     else:
@@ -136,11 +138,13 @@ def _render_editor(all_companies, all_keywords_list):
 
             if target_id:
                 update_stock(target_id, final_comp, st.session_state.doc_title, in_content, f_kw)
+                clear_stocks_cache()
                 st.session_state['stock_db'] = load_stocks()
                 st.success("수정되었습니다!")
             else:
                 new_data = add_stock(final_comp, st.session_state.doc_title, in_content, f_kw)
                 if new_data:
+                    clear_stocks_cache()
                     st.session_state['stock_db'] = load_stocks()
                     st.success("저장되었습니다!")
                 else:

@@ -40,6 +40,7 @@ def _parse_keywords_and_date(kw_raw, created_at):
 # ==========================================
 # CRUD
 # ==========================================
+@st.cache_data(ttl=300)
 def load_stocks():
     """전체 Stock 문서 로드"""
     wb = get_workbook()
@@ -47,7 +48,7 @@ def load_stocks():
         return []
     try:
         ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
-        
+
         # content 컬럼이 남아있으면 제거 (마이그레이션 호환)
         headers = ws_meta.row_values(1)
         if "content" in headers:
@@ -84,6 +85,10 @@ def load_stocks():
     except Exception as e:
         logger.error(f"load_stocks failed: {e}")
         return []
+
+def clear_stocks_cache():
+    """스톡 캐시 초기화"""
+    load_stocks.clear()
 
 def add_stock(company, title, content, keywords):
     """Stock 문서 추가"""

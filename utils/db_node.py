@@ -31,6 +31,7 @@ def get_group_color(group_name):
 # ==========================================
 # CRUD
 # ==========================================
+@st.cache_data(ttl=300)
 def load_nodes():
     """메인 시트 + node_chunks에서 전체 노드 로드"""
     wb = get_workbook()
@@ -65,6 +66,10 @@ def load_nodes():
     except Exception as e:
         logger.error(f"load_nodes failed: {e}")
         return []
+
+def clear_nodes_cache():
+    """노드 캐시 초기화"""
+    load_nodes.clear()
 
 def add_node(label, group, summary, keywords, content=""):
     """노드 추가"""

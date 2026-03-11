@@ -4,7 +4,7 @@ valuechain_ui.py — Value Chain List / Viewer / Add UI
 import streamlit as st
 import json
 import time
-from utils.db_chain import load_valuechains, add_valuechain, delete_valuechain, analyze_valuechain_image
+from utils.db_chain import load_valuechains, add_valuechain, delete_valuechain, analyze_valuechain_image, clear_valuechains_cache
 from utils.db_common import (
     get_kst_now_str, copy_to_clipboard, compress_image,
     image_to_base64, highlight_text
@@ -126,6 +126,7 @@ def _render_list_view():
                     with st.popover("⋮", use_container_width=True):
                         if st.button("Trash", key=f"del_vc_{vc['id']}", use_container_width=True):
                             delete_valuechain(vc['id'])
+                            clear_valuechains_cache()
                             st.session_state['vc_list'] = load_valuechains()
                             if st.session_state['selected_vc_id'] == vc['id']:
                                 st.session_state['selected_vc_id'] = None
@@ -231,6 +232,7 @@ def _render_add_view():
                 try:
                     json.loads(vc_json)  # 유효성 검사
                     add_valuechain(vc_title, vc_json, st.session_state['analyzed_img_b64'])
+                    clear_valuechains_cache()
                     st.success("저장되었습니다!")
                     st.session_state['vc_list'] = load_valuechains()
                     st.session_state['vc_mode'] = 'list'

@@ -172,18 +172,28 @@ def save_setting_to_db(key, value):
     except Exception as e:
         logger.error(f"Setting save failed [{key}]: {e}")
 
+@st.cache_data(ttl=600)
+def _fetch_settings_raw():
+    """설정값 DB에서 로드 → dict 반환 (캐시됨)"""
+    wb = get_workbook()
+    if not wb:
+        return {}
+    try:
+        ws = get_or_create_sheet(wb, "settings", ["key", "value"])
+        records = ws.get_all_records()
+        return {str(r['key']): str(r['value']) for r in records}
+    except Exception as e:
+        logger.error(f"Settings fetch failed: {e}")
+        return {}
+
 def load_settings_from_db():
     """설정값 DB에서 로드 → session_state 반영"""
     if st.session_state.get('settings_loaded'):
         return
-    wb = get_workbook()
-    if not wb:
+    settings_map = _fetch_settings_raw()
+    if not settings_map:
         return
     try:
-        ws = get_or_create_sheet(wb, "settings", ["key", "value"])
-        records = ws.get_all_records()
-        settings_map = {str(r['key']): str(r['value']) for r in records}
-
         type_map = {
             'phy_active': lambda v: v.strip().lower() == 'true',
             'phy_damping': float,

@@ -80,6 +80,7 @@ def _delete_chunks(wb, sheet_name, doc_id):
 # ==========================================
 # CRUD
 # ==========================================
+@st.cache_data(ttl=300)
 def load_valuechains():
     """전체 밸류체인 로드"""
     wb = get_workbook()
@@ -114,6 +115,10 @@ def load_valuechains():
     except Exception as e:
         logger.error(f"load_valuechains failed: {e}")
         return []
+
+def clear_valuechains_cache():
+    """밸류체인 캐시 초기화"""
+    load_valuechains.clear()
 
 def add_valuechain(title, json_str, image_base64=""):
     """밸류체인 추가"""

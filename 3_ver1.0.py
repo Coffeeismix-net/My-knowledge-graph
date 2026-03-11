@@ -6,9 +6,10 @@ import streamlit as st
 import time
 
 # [MODULE IMPORTS]
-from utils.db_node import load_nodes, load_trash, restore_node, permanent_delete
+from utils.db_node import load_nodes, load_trash, restore_node, permanent_delete, clear_nodes_cache
 from utils.db_common import load_settings_from_db
-from utils.db_stock import load_stocks, load_stock_trash, restore_stock, permanent_delete_stock
+from utils.db_stock import load_stocks, load_stock_trash, restore_stock, permanent_delete_stock, clear_stocks_cache
+from utils.db_chain import clear_valuechains_cache
 from utils.style import GLOBAL_CSS
 from modules.stock_ui import render_stock_page
 from modules.node_ui import render_node_page, render_sidebar
@@ -97,6 +98,7 @@ def _render_trash_can():
                 c1.caption(f"Deleted: {row['deleted_at']}")
                 if c2.button("♻️ 복구", key=f"res_n_{row['id']}", use_container_width=True):
                     restore_node(row)
+                    clear_nodes_cache()
                     st.session_state['nodes_db'].append({
                         "id": str(row['id']), "label": row['label'],
                         "group": row['group'], "summary": row['summary'],
@@ -127,6 +129,7 @@ def _render_trash_can():
                 c1.caption(f"Deleted: {row['deleted_at']}")
                 if c2.button("♻️ 복구", key=f"res_s_{row['id']}", use_container_width=True):
                     restore_stock(row)
+                    clear_stocks_cache()
                     if 'stock_db' in st.session_state:
                         st.session_state['stock_db'].append(row)
                     st.success("복구됨")

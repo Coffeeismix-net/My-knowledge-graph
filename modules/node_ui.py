@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import time
 from streamlit_agraph import agraph, Node, Edge, Config
-from utils.db_node import update_node, move_to_trash, add_node, ai_process, get_group_color
+from utils.db_node import update_node, move_to_trash, add_node, ai_process, get_group_color, clear_nodes_cache
 from utils.db_common import (
     save_setting_to_db, copy_to_clipboard, strip_html, highlight_text
 )
@@ -42,6 +42,7 @@ def _do_update(nid, label, summary, kw_str):
     """노드 업데이트 (DB + session)"""
     k_list = [k.strip() for k in kw_str.split(',') if k.strip()]
     update_node(nid, label, summary, k_list)
+    clear_nodes_cache()
     for collection in [st.session_state['nodes_db'], st.session_state['workspace_nodes']]:
         for n in collection:
             if str(n['id']) == str(nid):
@@ -57,6 +58,7 @@ def _do_trash(nid):
     tgt = next((n for n in st.session_state['nodes_db'] if str(n['id']) == str(nid)), None)
     if tgt:
         move_to_trash(nid, tgt)
+        clear_nodes_cache()
         st.session_state['nodes_db'] = [n for n in st.session_state['nodes_db'] if str(n['id']) != str(nid)]
         st.session_state['card_stack'] = [n for n in st.session_state['card_stack'] if str(n['id']) != str(nid)]
         _close_workspace(nid)
@@ -418,6 +420,7 @@ def _render_add_view():
 
             new_node_data = add_node(title, group_name, final_summary, final_keywords, content_val)
             if new_node_data:
+                clear_nodes_cache()
                 st.session_state['nodes_db'].append(new_node_data)
                 st.session_state['ai_result_summary'] = ""
                 st.session_state['ai_result_kw'] = ""
