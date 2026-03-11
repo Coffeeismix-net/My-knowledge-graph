@@ -2,7 +2,8 @@
 db_chain.py — Value Chain CRUD + AI 이미지 분석
 """
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import uuid
 import logging
 from utils.db_common import get_workbook, get_or_create_sheet, chunk_text, get_kst_now_str
@@ -48,12 +49,14 @@ def analyze_valuechain_image(image_bytes):
     """밸류체인 이미지 → JSON 구조 변환"""
     if "gemini" not in st.secrets:
         return {"success": False, "error": "API Key Missing"}
-    genai.configure(api_key=st.secrets["gemini"]["api_key"])
+    client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
 
     try:
-        image_part = {"mime_type": "image/jpeg", "data": image_bytes}
-        model = genai.GenerativeModel('gemini-flash-latest')
-        response = model.generate_content([VALUECHAIN_PROMPT, image_part])
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg')
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[image_part, VALUECHAIN_PROMPT]
+        )
         text = response.text.replace('```json', '').replace('```', '').strip()
         return {"success": True, "json": text}
     except Exception as e:

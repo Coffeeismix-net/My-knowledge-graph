@@ -2,7 +2,7 @@
 db_node.py — Knowledge Node CRUD + AI 분석
 """
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import json
 import hashlib
 import uuid
@@ -196,14 +196,13 @@ def ai_process(text):
     """Gemini AI 텍스트 분석 (요약 + 키워드)"""
     if "gemini" not in st.secrets:
         return {"success": False, "error": "Gemini API key not configured"}
-    genai.configure(api_key=st.secrets["gemini"]["api_key"])
+    client = genai.Client(api_key=st.secrets["gemini"]["api_key"])
     try:
-        model = genai.GenerativeModel('gemini-flash-latest')
         prompt = (
             f"Analyze:\n{text}\n\n"
             f"Output JSON: {{'summary': 'Korean summary (max 3 sentences)', 'keywords': '3-5 keywords'}}"
         )
-        res = model.generate_content(prompt)
+        res = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
         data = json.loads(res.text.replace('```json', '').replace('```', '').strip())
         return {"success": True, "summary": data.get('summary', ''), "keywords": data.get('keywords', ''), "error": None}
     except Exception as e:
