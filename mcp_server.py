@@ -7,9 +7,11 @@ import json
 import uuid
 import logging
 import uvicorn
+
 from datetime import datetime, timedelta
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -63,7 +65,12 @@ def get_kst_now_str():
 def new_id():
     return str(uuid.uuid4())[:8]
 
-mcp = FastMCP("pkm-knowledge-store")
+mcp = FastMCP(
+    "pkm-knowledge-store",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False
+    )
+)
 
 @mcp.tool()
 def add_node(label: str, group: str, summary: str, keywords: str, content: str = "") -> str:
@@ -123,9 +130,7 @@ def add_stock(company: str, title: str, content: str, keywords: str) -> str:
 # ==========================================
 import uvicorn
 
-app = mcp.streamable_http_app(
-    allowed_hosts=["my-knowledge-graph-mcp-server.onrender.com", "localhost", "*"]
-)
+app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
