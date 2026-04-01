@@ -6,21 +6,16 @@ import os
 import json
 import uuid
 import logging
+import uvicorn
 from datetime import datetime, timedelta
 
-# ── MCP SDK ──────────────────────────────────────────────
 from mcp.server.fastmcp import FastMCP
-
-# ── Google Sheets ─────────────────────────────────────────
 import gspread
 from google.oauth2.service_account import Credentials
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ==========================================
-# 설정
-# ==========================================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -28,9 +23,6 @@ SCOPES = [
 SPREADSHEET_KEY = "1ryBvLf_iUwoFR7Cx9zjZEldV6WHe26Jngxu0fs-BZMc"
 CHUNK_SIZE = 45000
 
-# ==========================================
-# DB 연결
-# ==========================================
 _client = None
 _wb = None
 
@@ -71,20 +63,10 @@ def get_kst_now_str():
 def new_id():
     return str(uuid.uuid4())[:8]
 
-# ==========================================
-# MCP 서버
-# ==========================================
 mcp = FastMCP("pkm-knowledge-store")
 
-# ── 노드 저장 ──────────────────────────────────────────────
 @mcp.tool()
-def add_node(
-    label: str,
-    group: str,
-    summary: str,
-    keywords: str,
-    content: str = ""
-) -> str:
+def add_node(label: str, group: str, summary: str, keywords: str, content: str = "") -> str:
     """
     지식 노드를 PKM 홈피에 저장합니다.
 
@@ -102,25 +84,16 @@ def add_node(
         doc_id = new_id()
         now = get_kst_now_str()
         wb.sheet1.append_row([doc_id, label, group, summary, keywords, now])
-
         if content:
             ws_chunks = get_or_create_sheet(wb, "node_chunks", ["id", "index", "content"])
-            chunks = chunk_text(content)
-            ws_chunks.append_rows([[doc_id, i, c] for i, c in enumerate(chunks)])
-
+            ws_chunks.append_rows([[doc_id, i, c] for i, c in enumerate(chunk_text(content))])
         return f"저장 완료: [{group}] {label} (id: {doc_id})"
     except Exception as e:
         logger.error(f"add_node 실패: {e}")
         return f"오류: {e}"
 
-# ── 기업 분석 저장 ─────────────────────────────────────────
 @mcp.tool()
-def add_stock(
-    company: str,
-    title: str,
-    content: str,
-    keywords: str
-) -> str:
+def add_stock(company: str, title: str, content: str, keywords: str) -> str:
     """
     기업 분석 내용을 PKM 홈피에 저장합니다.
 
@@ -136,22 +109,17 @@ def add_stock(
     try:
         doc_id = new_id()
         now = get_kst_now_str()
-
-        ws_meta = get_or_create_sheet(wb, "stocks",
-            ["id", "company", "title", "keywords", "created_at"])
+        ws_meta = get_or_create_sheet(wb, "stocks", ["id", "company", "title", "keywords", "created_at"])
         ws_meta.append_row([doc_id, company, title, keywords, now])
-
         ws_chunks = get_or_create_sheet(wb, "stock_chunks", ["id", "index", "content"])
         ws_chunks.append_rows([[doc_id, i, c] for i, c in enumerate(chunk_text(content))])
-
         return f"저장 완료: [{company}] {title} (id: {doc_id})"
     except Exception as e:
         logger.error(f"add_stock 실패: {e}")
         return f"오류: {e}"
 
-# ==========================================
-# 실행
-# ==========================================
+app = mcp.get_asgi_app()
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
