@@ -63,7 +63,11 @@ def get_kst_now_str():
 def new_id():
     return str(uuid.uuid4())[:8]
 
-mcp = FastMCP("pkm-knowledge-store")
+mcp = FastMCP(
+    "pkm-knowledge-store",
+    host="0.0.0.0",
+    allowed_hosts=["my-knowledge-graph-mcp-server.onrender.com", "localhost"]
+)
 
 @mcp.tool()
 def add_node(label: str, group: str, summary: str, keywords: str, content: str = "") -> str:
