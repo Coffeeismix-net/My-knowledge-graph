@@ -118,5 +118,13 @@ def add_stock(company: str, title: str, content: str, keywords: str) -> str:
         logger.error(f"add_stock 실패: {e}")
         return f"오류: {e}"
 
+# ==========================================
+# ASGI 앱 + 실행
+# ==========================================
+import uvicorn
+
+app = mcp.streamable_http_app()
+
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
